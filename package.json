@@ -1,0 +1,20 @@
+{
+  "name": "discord-qr-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot that processes QR codes",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.x"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.1",
+    "express": "^5.1.0",
+    "jimp": "^0.22.10",
+    "node-fetch": "^2.7.0",
+    "qrcode-reader": "^1.0.4"
+  }
+}
