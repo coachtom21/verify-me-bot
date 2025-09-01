@@ -404,6 +404,7 @@ client.on('guildMemberAdd', async (member) => {
             displayName: member.displayName || member.user.username,
             guildId: member.guild.id,
             joinedAt: new Date().toISOString(),
+            
             inviteUrl: 'https://discord.gg/smallstreet' // You can make this dynamic if needed
         };
 
@@ -413,10 +414,38 @@ client.on('guildMemberAdd', async (member) => {
         if (dbResult.success) {
             console.log(`✅ User ${member.user.tag} successfully added to SmallStreet database`);
             
+            // Send DM notification about XP reward
+            try {
+                await member.send(`🎉 **Welcome to SmallStreet!**
+                
+✅ **Your Discord account has been successfully linked!**
+💰 **You've been awarded 5,000,000 XP** for joining via Discord invite!
+
+🎯 **Next Steps:**
+• Visit your SmallStreet account to see your XP balance
+• Use the verification system to get your Discord roles
+• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
+
+🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
+
+*Make Everyone Great Again* 🚀`);
+                
+                console.log(`📧 Sent XP notification DM to ${member.user.tag}`);
+            } catch (dmError) {
+                console.error(`❌ Could not send XP notification DM to ${member.user.tag}:`, dmError.message);
+                
+                // Fallback: Include XP notification in welcome channel message
+                const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+                if (welcomeChannel) {
+                    await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n💰 **You've been awarded 5,000,000 XP** for joining via Discord invite!\n\n📧 *Check your DMs for more details*\n\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+                }
+                return; // Exit early since we sent the fallback message
+            }
+            
             // Send welcome message to server
             const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
             if (welcomeChannel) {
-                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nYou've been awarded 5M XP for joining via Discord invite!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nYou've been awarded **5,000,000 XP** for joining via Discord invite!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
             }
         } else {
             console.error(`❌ Failed to add user ${member.user.tag} to database:`, dbResult.error);
