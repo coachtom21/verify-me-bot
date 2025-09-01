@@ -28,6 +28,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers, // Add this for member join events
     ],
     partials: [Partials.Channel]
 });
@@ -105,6 +106,114 @@ async function fetchWithRetry(url, options = {}, maxRetries = 5, initialDelay = 
         }
     }
     throw lastError;
+}
+
+// Function to insert user data into SmallStreet database
+async function insertUserToSmallStreetDatabase(userData) {
+    try {
+        // Method 1: Using WordPress REST API to create/update user meta
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/wp/v2/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify({
+                username: userData.discordUsername,
+                email: userData.email,
+                first_name: userData.displayName,
+                meta: {
+                    discord_id: userData.discordId,
+                    discord_username: userData.discordUsername,
+                    discord_display_name: userData.displayName,
+                    joined_at: new Date().toISOString(),
+                    guild_id: userData.guildId,
+                    joined_via_invite: true,
+                    bot_version: '1.0.0'
+                }
+            })
+        });
+
+        const result = await response.json();
+        
+        if (response.ok) {
+            console.log(`✅ Successfully inserted user ${userData.discordUsername} to SmallStreet database`);
+            return { success: true, data: result };
+        } else {
+            console.error(`❌ Failed to insert user to database:`, result);
+            return { success: false, error: result };
+        }
+    } catch (error) {
+        console.error('Error inserting user to SmallStreet database:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Alternative function using custom endpoint
+async function insertUserToSmallStreetCustomAPI(userData) {
+    try {
+        const response = await fetchWithRetry('http://smallstreet.local/wp-json/myapi/v1/discord-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify({
+                discord_id: userData.discordId,
+                discord_username: userData.discordUsername,
+                discord_display_name: userData.displayName,
+                joined_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
+                guild_id: userData.guildId,
+                joined_via_invite: userData.inviteUrl || 'https://discord.gg/smallstreet',
+                xp_type: 'discord_invite',
+                xp_awarded: 5000000,
+                status: 'completed',
+                verification_date: new Date().toISOString().replace('T', ' ').replace('Z', '')
+            })
+        });
+
+        const result = await response.json();
+        
+        if (response.ok) {
+            console.log(`✅ Successfully inserted user ${userData.discordUsername} to SmallStreet database`);
+            return { success: true, data: result };
+        } else {
+            console.error(`❌ Failed to insert user to database:`, result);
+            return { success: false, error: result };
+        }
+    } catch (error) {
+        console.error('Error inserting user to SmallStreet database:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Function to check if user email exists in SmallStreet
+async function checkUserEmailExists(email) {
+    try {
+        const response = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users?search=${encodeURIComponent(email)}`, {
+            headers: {
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        const users = await response.json();
+        
+        if (response.ok && users.length > 0) {
+            // Check if any user has this email
+            const userWithEmail = users.find(user => 
+                user.email && user.email.toLowerCase() === email.toLowerCase()
+            );
+            return userWithEmail ? { exists: true, user: userWithEmail } : { exists: false };
+        }
+        
+        return { exists: false };
+    } catch (error) {
+        console.error('Error checking user email:', error);
+        return { exists: false, error: error.message };
+    }
 }
 
 // Modify the fetchQR1BeData function
@@ -283,9 +392,60 @@ process.on('SIGINT', async () => {
 // Add a Set to track processing messages
 const processingUsers = new Set();
 
-// Message handling
+// Member join event handler
+client.on('guildMemberAdd', async (member) => {
+    try {
+        console.log(`👋 New member joined: ${member.user.tag} (${member.user.id})`);
+        
+        // Prepare user data for database insertion
+        const userData = {
+            discordId: member.user.id,
+            discordUsername: member.user.username,
+            displayName: member.displayName || member.user.username,
+            guildId: member.guild.id,
+            joinedAt: new Date().toISOString(),
+            inviteUrl: 'https://discord.gg/smallstreet' // You can make this dynamic if needed
+        };
+
+        // Insert user data into SmallStreet database
+        const dbResult = await insertUserToSmallStreetCustomAPI(userData);
+        
+        if (dbResult.success) {
+            console.log(`✅ User ${member.user.tag} successfully added to SmallStreet database`);
+            
+            // Send welcome message to server
+            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nYou've been awarded 5M XP for joining via Discord invite!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+            }
+        } else {
+            console.error(`❌ Failed to add user ${member.user.tag} to database:`, dbResult.error);
+            
+            // Still send welcome message even if DB insert fails
+            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error handling member join:', error);
+        
+        // Send welcome message even if there's an error
+        try {
+            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+            }
+        } catch (welcomeError) {
+            console.error('Error sending welcome message:', welcomeError);
+        }
+    }
+});
+
+// Handle QR code verification (existing code)
 client.on('messageCreate', async (message) => {
-    // Basic checks
+    // Handle QR code verification (existing code)
     if (message.author.bot || 
         message.channel.id !== process.env.VERIFY_CHANNEL_ID || 
         !message.attachments.size) return;
