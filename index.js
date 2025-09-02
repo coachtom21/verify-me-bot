@@ -150,6 +150,33 @@ async function insertUserToSmallStreetDatabase(userData) {
     }
 }
 
+// PHP serialize function for WordPress usermeta compatibility
+function phpSerialize(obj) {
+    if (obj === null) return 'N;';
+    if (typeof obj === 'boolean') return obj ? 'b:1;' : 'b:0;';
+    if (typeof obj === 'number') {
+        if (Number.isInteger(obj)) return `i:${obj};`;
+        return `d:${obj};`;
+    }
+    if (typeof obj === 'string') return `s:${Buffer.byteLength(obj, 'utf8')}:"${obj}";`;
+    if (Array.isArray(obj)) {
+        let result = `a:${obj.length}:{`;
+        obj.forEach((value, key) => {
+            result += phpSerialize(key) + phpSerialize(value);
+        });
+        return result + '}';
+    }
+    if (typeof obj === 'object') {
+        const keys = Object.keys(obj);
+        let result = `a:${keys.length}:{`;
+        keys.forEach(key => {
+            result += phpSerialize(key) + phpSerialize(obj[key]);
+        });
+        return result + '}';
+    }
+    return 'N;';
+}
+
 // Test function to verify API endpoint
 async function testSmallStreetAPI() {
     try {
@@ -169,14 +196,82 @@ async function testSmallStreetAPI() {
     }
 }
 
-// Alternative function using custom endpoint
-async function insertUserToSmallStreetCustomAPI(userData) {
+// Function to create WordPress user and add usermeta data
+async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 Making API call to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
-        console.log(`📤 Sending data:`, JSON.stringify(userData, null, 2));
+        console.log(`🔗 Creating WordPress user and usermeta for: ${userData.discordUsername}`);
+        console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
         
-        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+        // Step 1: Create or get WordPress user
+        let wpUser = null;
+        try {
+            // First, try to find existing user by email
+            const searchResponse = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users?search=${encodeURIComponent(userData.email)}`, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+            
+            const existingUsers = await searchResponse.json();
+            if (searchResponse.ok && existingUsers.length > 0) {
+                wpUser = existingUsers[0];
+                console.log(`👤 Found existing WordPress user:`, wpUser.id);
+            } else {
+                // Create new WordPress user
+                const createResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/wp/v2/users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    body: JSON.stringify({
+                        username: userData.discordUsername,
+                        email: userData.email,
+                        first_name: userData.displayName,
+                        password: Math.random().toString(36).slice(-8) // Random password
+                    })
+                });
+                
+                if (createResponse.ok) {
+                    wpUser = await createResponse.json();
+                    console.log(`👤 Created new WordPress user:`, wpUser.id);
+                } else {
+                    const errorData = await createResponse.json();
+                    console.error(`❌ Failed to create WordPress user:`, errorData);
+                    return { success: false, error: `Failed to create user: ${JSON.stringify(errorData)}` };
+                }
+            }
+        } catch (userError) {
+            console.error('Error with WordPress user creation/lookup:', userError);
+            return { success: false, error: `User creation error: ${userError.message}` };
+        }
+        
+        // Step 2: Add usermeta data
+        const discordInviteData = {
+            discord_id: userData.discordId,
+            discord_username: userData.discordUsername,
+            discord_display_name: userData.displayName,
+            joined_at: userData.joinedAt,
+            guild_id: userData.guildId,
+            invite_url: userData.inviteUrl,
+            xp_type: 'discord_invite',
+            xp_awarded: 5000000,
+            status: 'completed',
+            verification_date: new Date().toISOString()
+        };
+        
+        // Serialize the data using PHP serialize format (WordPress standard)
+        const serializedData = phpSerialize(discordInviteData);
+        
+        console.log(`📝 Adding usermeta data for user ID: ${wpUser.id}`);
+        console.log(`📝 Meta key: _discord_invite`);
+        console.log(`📝 Meta value:`, serializedData);
+        
+        // Add usermeta using WordPress REST API
+        const metaResponse = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users/${wpUser.id}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -184,30 +279,26 @@ async function insertUserToSmallStreetCustomAPI(userData) {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             body: JSON.stringify({
-                discord_id: userData.discordId,
-                discord_username: userData.discordUsername,
-                discord_display_name: userData.displayName,
-                joined_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
-                guild_id: userData.guildId,
-                joined_via_invite: userData.inviteUrl || 'https://discord.gg/smallstreet',
-                xp_type: 'discord_invite',
-                xp_awarded: 5000000,
-                status: 'completed',
-                verification_date: new Date().toISOString().replace('T', ' ').replace('Z', '')
+                meta: {
+                    '_discord_invite': serializedData
+                }
             })
         });
-
-        const result = await response.json();
         
-        if (response.ok) {
-            console.log(`✅ Successfully inserted user ${userData.discordUsername} to SmallStreet database`);
-            return { success: true, data: result };
+        const metaResult = await metaResponse.json();
+        console.log(`📥 Usermeta Response Status: ${metaResponse.status} ${metaResponse.statusText}`);
+        console.log(`📥 Usermeta Response Body:`, JSON.stringify(metaResult, null, 2));
+        
+        if (metaResponse.ok) {
+            console.log(`✅ Successfully added usermeta for user ${userData.discordUsername}`);
+            return { success: true, data: { user: wpUser, meta: metaResult } };
         } else {
-            console.error(`❌ Failed to insert user to database:`, result);
-            return { success: false, error: result };
+            console.error(`❌ Failed to add usermeta:`, metaResult);
+            return { success: false, error: `Usermeta error: ${JSON.stringify(metaResult)}` };
         }
+        
     } catch (error) {
-        console.error('Error inserting user to SmallStreet database:', error);
+        console.error('Error inserting user to SmallStreet usermeta:', error);
         return { success: false, error: error.message };
     }
 }
@@ -451,24 +542,12 @@ client.on('guildMemberAdd', async (member) => {
         const apiTest = await testSmallStreetAPI();
         console.log(`🧪 API Test Result:`, apiTest);
         
-        // Insert user data into SmallStreet database
-        console.log(`📊 Attempting to insert user data:`, JSON.stringify(userData, null, 2));
-        const dbResult = await insertUserToSmallStreetCustomAPI(userData);
-        console.log(`📊 Database insertion result:`, JSON.stringify(dbResult, null, 2));
+        // Insert user data into SmallStreet usermeta table
+        console.log(`📊 Attempting to insert user data to usermeta:`, JSON.stringify(userData, null, 2));
+        const dbResult = await insertUserToSmallStreetUsermeta(userData);
+        console.log(`📊 Usermeta insertion result:`, JSON.stringify(dbResult, null, 2));
         
-        // If custom API fails, try the WordPress API as fallback
-        let fallbackResult = null;
-        if (!dbResult.success) {
-            console.log(`🔄 Custom API failed, trying WordPress API as fallback...`);
-            fallbackResult = await insertUserToSmallStreetDatabase(userData);
-            console.log(`🔄 Fallback result:`, JSON.stringify(fallbackResult, null, 2));
-            
-            if (fallbackResult.success) {
-                console.log(`✅ Fallback successful - user data inserted via WordPress API`);
-            }
-        }
-        
-        if (dbResult.success || (fallbackResult && fallbackResult.success)) {
+        if (dbResult.success) {
             console.log(`✅ User ${member.user.tag} successfully added to SmallStreet database`);
             
             // Send DM notification about XP reward
@@ -505,10 +584,7 @@ client.on('guildMemberAdd', async (member) => {
                 await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nYou've been awarded **5,000,000 XP** for joining via Discord invite!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
             }
         } else {
-            console.error(`❌ Failed to add user ${member.user.tag} to database:`, dbResult.error);
-            if (fallbackResult && !fallbackResult.success) {
-                console.error(`❌ Fallback also failed:`, fallbackResult.error);
-            }
+            console.error(`❌ Failed to add user ${member.user.tag} to usermeta:`, dbResult.error);
             
             // Still send welcome message even if DB insert fails
             const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
@@ -547,8 +623,8 @@ client.on('messageCreate', async (message) => {
                 inviteUrl: 'https://discord.gg/smallstreet'
             };
             
-            await message.reply('🧪 Testing database insertion...');
-            const result = await insertUserToSmallStreetCustomAPI(testUserData);
+            await message.reply('🧪 Testing usermeta insertion...');
+            const result = await insertUserToSmallStreetUsermeta(testUserData);
             await message.reply(`🧪 Test result: ${JSON.stringify(result, null, 2)}`);
         } catch (error) {
             await message.reply(`❌ Test failed: ${error.message}`);
