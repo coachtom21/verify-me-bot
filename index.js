@@ -150,10 +150,33 @@ async function insertUserToSmallStreetDatabase(userData) {
     }
 }
 
+// Test function to verify API endpoint
+async function testSmallStreetAPI() {
+    try {
+        console.log('🧪 Testing SmallStreet API endpoint...');
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        console.log(`🧪 API Test Response: ${response.status} ${response.statusText}`);
+        return response.ok;
+    } catch (error) {
+        console.error('🧪 API Test Failed:', error.message);
+        return false;
+    }
+}
+
 // Alternative function using custom endpoint
 async function insertUserToSmallStreetCustomAPI(userData) {
     try {
-        const response = await fetchWithRetry('http://smallstreet.local/wp-json/myapi/v1/discord-user', {
+        console.log(`🔗 Making API call to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
+        console.log(`📤 Sending data:`, JSON.stringify(userData, null, 2));
+        console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
+        
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -321,6 +344,11 @@ client.once('ready', async () => {
     console.log(`Bot is online as ${client.user.tag}`);
     
     try {
+        // Test API connection on startup
+        console.log('🧪 Testing API connection on startup...');
+        const apiTest = await testSmallStreetAPI();
+        console.log(`🧪 Startup API Test Result:`, apiTest);
+        
         // Clear any existing bot messages in the verification channel
         const channel = client.channels.cache.get(process.env.VERIFY_CHANNEL_ID);
         if (channel) {
@@ -397,21 +425,50 @@ client.on('guildMemberAdd', async (member) => {
     try {
         console.log(`👋 New member joined: ${member.user.tag} (${member.user.id})`);
         
+        // Try to get invite information
+        let inviteUsed = null;
+        try {
+            const invites = await member.guild.invites.fetch();
+            // This is a simplified approach - in a real scenario you'd track invite usage
+            inviteUsed = 'https://discord.gg/smallstreet';
+        } catch (inviteError) {
+            console.log('Could not fetch invites:', inviteError.message);
+            inviteUsed = 'https://discord.gg/smallstreet';
+        }
+        
         // Prepare user data for database insertion
         const userData = {
             discordId: member.user.id,
             discordUsername: member.user.username,
             displayName: member.displayName || member.user.username,
+            email: `${member.user.username}@discord.local`, // Temporary email for Discord users
             guildId: member.guild.id,
             joinedAt: new Date().toISOString(),
-            
-            inviteUrl: 'https://discord.gg/smallstreet' // You can make this dynamic if needed
+            inviteUrl: inviteUsed
         };
 
-        // Insert user data into SmallStreet database
-        const dbResult = await insertUserToSmallStreetCustomAPI(userData);
+        // Test API endpoint first
+        const apiTest = await testSmallStreetAPI();
+        console.log(`🧪 API Test Result:`, apiTest);
         
-        if (dbResult.success) {
+        // Insert user data into SmallStreet database
+        console.log(`📊 Attempting to insert user data:`, JSON.stringify(userData, null, 2));
+        const dbResult = await insertUserToSmallStreetCustomAPI(userData);
+        console.log(`📊 Database insertion result:`, JSON.stringify(dbResult, null, 2));
+        
+        // If custom API fails, try the WordPress API as fallback
+        let fallbackResult = null;
+        if (!dbResult.success) {
+            console.log(`🔄 Custom API failed, trying WordPress API as fallback...`);
+            fallbackResult = await insertUserToSmallStreetDatabase(userData);
+            console.log(`🔄 Fallback result:`, JSON.stringify(fallbackResult, null, 2));
+            
+            if (fallbackResult.success) {
+                console.log(`✅ Fallback successful - user data inserted via WordPress API`);
+            }
+        }
+        
+        if (dbResult.success || (fallbackResult && fallbackResult.success)) {
             console.log(`✅ User ${member.user.tag} successfully added to SmallStreet database`);
             
             // Send DM notification about XP reward
@@ -449,6 +506,9 @@ client.on('guildMemberAdd', async (member) => {
             }
         } else {
             console.error(`❌ Failed to add user ${member.user.tag} to database:`, dbResult.error);
+            if (fallbackResult && !fallbackResult.success) {
+                console.error(`❌ Fallback also failed:`, fallbackResult.error);
+            }
             
             // Still send welcome message even if DB insert fails
             const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
@@ -474,6 +534,28 @@ client.on('guildMemberAdd', async (member) => {
 
 // Handle QR code verification (existing code)
 client.on('messageCreate', async (message) => {
+    // Handle test command for database insertion
+    if (message.content === '!testdb' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const testUserData = {
+                discordId: message.author.id,
+                discordUsername: message.author.username,
+                displayName: message.author.displayName || message.author.username,
+                email: `${message.author.username}@discord.local`,
+                guildId: message.guild.id,
+                joinedAt: new Date().toISOString(),
+                inviteUrl: 'https://discord.gg/smallstreet'
+            };
+            
+            await message.reply('🧪 Testing database insertion...');
+            const result = await insertUserToSmallStreetCustomAPI(testUserData);
+            await message.reply(`🧪 Test result: ${JSON.stringify(result, null, 2)}`);
+        } catch (error) {
+            await message.reply(`❌ Test failed: ${error.message}`);
+        }
+        return;
+    }
+    
     // Handle QR code verification (existing code)
     if (message.author.bot || 
         message.channel.id !== process.env.VERIFY_CHANNEL_ID || 
