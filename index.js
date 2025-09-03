@@ -505,6 +505,16 @@ client.on('guildMemberAdd', async (member) => {
         console.log(`👋 Member display name: ${member.displayName}`);
         console.log(`👋 Member joined at: ${member.joinedAt}`);
         
+        // Send immediate notification to admin that event fired
+        try {
+            const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+            if (adminUser && debugMode) {
+                await adminUser.send(`🔔 **Member Join Event Fired!**\n**User:** ${member.user.tag} (${member.user.id})\n**Guild:** ${member.guild.name}\n**Time:** ${new Date().toISOString()}`);
+            }
+        } catch (adminDmError) {
+            console.log('Could not send admin notification:', adminDmError.message);
+        }
+        
         // Try to get invite information
         let inviteUsed = null;
         try {
@@ -533,68 +543,17 @@ client.on('guildMemberAdd', async (member) => {
             await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
         }
         
-        // Insert user data to database when they join (do this first)
-        console.log(`💾 Inserting user data to database for new member: ${member.user.tag}`);
-        console.log(`💾 User data being sent:`, JSON.stringify(userData, null, 2));
-        
-        try {
-            const dbResult = await insertUserToSmallStreetUsermeta(userData);
-            
-            if (dbResult.success) {
-                console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
-                
-                // Send success message to admin channel for debugging (if debug mode is enabled)
-                if (debugMode) {
-                    try {
-                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                        if (adminUser) {
-                            await adminUser.send(`✅ **Database Insertion Success**\n**User:** ${member.user.tag} (${member.user.id})\n**Result:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
-                        }
-                    } catch (adminDmError) {
-                        console.log('Could not send admin DM:', adminDmError.message);
-                    }
-                }
-            } else {
-                console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
-                
-                // Send error message to admin channel for debugging (if debug mode is enabled)
-                if (debugMode) {
-                    try {
-                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                        if (adminUser) {
-                            await adminUser.send(`❌ **Database Insertion Failed**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
-                        }
-                    } catch (adminDmError) {
-                        console.log('Could not send admin DM:', adminDmError.message);
-                    }
-                }
-            }
-        } catch (dbError) {
-            console.error(`❌ Database insertion error for ${member.user.tag}:`, dbError);
-            console.error(`❌ Database error stack:`, dbError.stack);
-            
-            // Send error message to admin channel for debugging (if debug mode is enabled)
-            if (debugMode) {
-                try {
-                    const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                    if (adminUser) {
-                        await adminUser.send(`❌ **Database Insertion Exception**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** ${dbError.message}\n**Stack:** \`\`\`\n${dbError.stack}\n\`\`\``);
-                    }
-                } catch (adminDmError) {
-                    console.log('Could not send admin DM:', adminDmError.message);
-                }
-            }
-        }
+        // Note: Database insertion now happens during QR verification, not on member join
+        console.log(`👋 Member joined: ${member.user.tag} - Database insertion will happen during QR verification`);
 
         // Send DM with instructions (optional - don't fail if DM is disabled)
         try {
             await member.send(`🎉 **Welcome to SmallStreet!**
 
-🎯 **You've received 5,000,000 XP for joining!**
-
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
 • Get your Discord roles based on your membership level
+• Receive **5,000,000 XP** rewards after verification
 
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
@@ -690,7 +649,7 @@ client.on('messageCreate', async (message) => {
     
     // Handle test command for QR verification flow
     if (message.content === '!testqr' && message.author.id === process.env.ADMIN_USER_ID) {
-        await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n\nNote: User data is now saved when they join the server, not during QR verification.');
+        await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n4. Save data to database\n\nThis is the complete verification flow with database insertion.');
         return;
     }
     
@@ -828,6 +787,20 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
+    // Handle command to test member join event
+    if (message.content === '!testmemberjoin' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const guild = message.guild;
+            const botMember = guild.members.cache.get(client.user.id);
+            const botPermissions = botMember.permissions;
+            
+            await message.reply(`🧪 **Member Join Event Test:**\n- Bot has GuildMembers intent: ${client.options.intents.has('GuildMembers')}\n- Bot can see members: ${botMember ? '✅ Yes' : '❌ No'}\n- Bot permissions: ${botPermissions.has('ViewChannel') ? '✅ View Channel' : '❌ No View Channel'}\n- Guild member count: ${guild.memberCount}\n\n**To test:** Invite someone to the server and check if you receive a DM notification.`);
+        } catch (error) {
+            await message.reply(`❌ Member join test failed: ${error.message}`);
+        }
+        return;
+    }
+    
     // Handle QR code verification (existing code)
     if (message.author.bot || 
         message.channel.id !== process.env.VERIFY_CHANNEL_ID || 
@@ -886,7 +859,41 @@ client.on('messageCreate', async (message) => {
             // Only try to assign role if membership is verified
             const roleResult = await assignRoleBasedOnMembership(message.member, membershipType);
 
-            // Prepare success response
+            // After successful role assignment, insert user data to database
+            await processingMsg.edit(`💾 Saving user data to database...`);
+            
+            // Prepare user data for database insertion
+            const userData = {
+                discordId: message.author.id,
+                discordUsername: message.author.username,
+                displayName: message.member.displayName || message.author.username,
+                email: contactInfo.email, // Use the email from QR code
+                guildId: message.guild.id,
+                joinedAt: message.member.joinedAt ? message.member.joinedAt.toISOString() : new Date().toISOString(),
+                inviteUrl: 'https://discord.gg/smallstreet'
+            };
+
+            console.log(`📊 QR Verification - Attempting to insert user data:`, JSON.stringify(userData, null, 2));
+            const dbResult = await insertUserToSmallStreetUsermeta(userData);
+            console.log(`📊 QR Verification - Database insertion result:`, JSON.stringify(dbResult, null, 2));
+
+            // Send debug notification if enabled
+            if (debugMode) {
+                try {
+                    const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                    if (adminUser) {
+                        if (dbResult.success) {
+                            await adminUser.send(`✅ **QR Verification - Database Success**\n**User:** ${message.author.tag} (${message.author.id})\n**Result:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                        } else {
+                            await adminUser.send(`❌ **QR Verification - Database Failed**\n**User:** ${message.author.tag} (${message.author.id})\n**Error:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                        }
+                    }
+                } catch (adminDmError) {
+                    console.log('Could not send admin DM:', adminDmError.message);
+                }
+            }
+
+            // Prepare success response with detailed error info
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
                 roleResult.roleName ? 
@@ -894,7 +901,9 @@ client.on('messageCreate', async (message) => {
                         `🎭 Already have ${roleResult.roleName} role` : 
                         `🎭 Discord Role Assigned: ${roleResult.roleName}` 
                     : '',
-                `💾 User data was saved when you joined the server`,
+                dbResult.success ? 
+                    `💾 User data saved to SmallStreet database` : 
+                    `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
                 `Make Everyone Great Again`
             ].filter(Boolean);
 
