@@ -540,59 +540,28 @@ client.on('guildMemberAdd', async (member) => {
             inviteUrl: inviteUsed
         };
 
-        // Test API endpoint first
-        const apiTest = await testSmallStreetAPI();
-        console.log(`🧪 API Test Result:`, apiTest);
+        // Send welcome message to new member
+        const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+        if (welcomeChannel) {
+            await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
+        }
         
-        // Insert user data into SmallStreet usermeta table
-        console.log(`📊 Attempting to insert user data to usermeta:`, JSON.stringify(userData, null, 2));
-        const dbResult = await insertUserToSmallStreetUsermeta(userData);
-        console.log(`📊 Usermeta insertion result:`, JSON.stringify(dbResult, null, 2));
-        
-        if (dbResult.success) {
-            console.log(`✅ User ${member.user.tag} successfully added to SmallStreet database`);
+        // Send DM with instructions
+        try {
+            await member.send(`🎉 **Welcome to SmallStreet!**
             
-            // Send DM notification about XP reward
-            try {
-                await member.send(`🎉 **Welcome to SmallStreet!**
-                
-✅ **Your Discord account has been successfully linked!**
-💰 **You've been awarded 5,000,000 XP** for joining via Discord invite!
-
 🎯 **Next Steps:**
-• Visit your SmallStreet account to see your XP balance
-• Use the verification system to get your Discord roles
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
+• Get your Discord roles based on your membership level
+• Receive XP rewards after verification
 
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
 *Make Everyone Great Again* 🚀`);
-                
-                console.log(`📧 Sent XP notification DM to ${member.user.tag}`);
-            } catch (dmError) {
-                console.error(`❌ Could not send XP notification DM to ${member.user.tag}:`, dmError.message);
-                
-                // Fallback: Include XP notification in welcome channel message
-                const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
-                if (welcomeChannel) {
-                    await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n💰 **You've been awarded 5,000,000 XP** for joining via Discord invite!\n\n📧 *Check your DMs for more details*\n\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
-                }
-                return; // Exit early since we sent the fallback message
-            }
             
-            // Send welcome message to server
-            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
-            if (welcomeChannel) {
-                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nYou've been awarded **5,000,000 XP** for joining via Discord invite!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
-            }
-        } else {
-            console.error(`❌ Failed to add user ${member.user.tag} to usermeta:`, dbResult.error);
-            
-            // Still send welcome message even if DB insert fails
-            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
-            if (welcomeChannel) {
-                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
-            }
+            console.log(`📧 Sent welcome DM to ${member.user.tag}`);
+        } catch (dmError) {
+            console.error(`❌ Could not send welcome DM to ${member.user.tag}:`, dmError.message);
         }
         
     } catch (error) {
@@ -631,6 +600,12 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             await message.reply(`❌ Test failed: ${error.message}`);
         }
+        return;
+    }
+    
+    // Handle test command for QR verification flow
+    if (message.content === '!testqr' && message.author.id === process.env.ADMIN_USER_ID) {
+        await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n4. Save data to database\n\nThis is much easier for debugging than inviting new members!');
         return;
     }
     
@@ -692,6 +667,24 @@ client.on('messageCreate', async (message) => {
             // Only try to assign role if membership is verified
             const roleResult = await assignRoleBasedOnMembership(message.member, membershipType);
 
+            // After successful role assignment, insert user data to database
+            await processingMsg.edit(`💾 Saving user data to database...`);
+            
+            // Prepare user data for database insertion
+            const userData = {
+                discordId: message.author.id,
+                discordUsername: message.author.username,
+                displayName: message.member.displayName || message.author.username,
+                email: contactInfo.email, // Use the email from QR code
+                guildId: message.guild.id,
+                joinedAt: message.member.joinedAt ? message.member.joinedAt.toISOString() : new Date().toISOString(),
+                inviteUrl: 'https://discord.gg/smallstreet'
+            };
+
+            console.log(`📊 QR Verification - Attempting to insert user data:`, JSON.stringify(userData, null, 2));
+            const dbResult = await insertUserToSmallStreetUsermeta(userData);
+            console.log(`📊 QR Verification - Database insertion result:`, JSON.stringify(dbResult, null, 2));
+
             // Prepare success response
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
@@ -700,6 +693,9 @@ client.on('messageCreate', async (message) => {
                         `🎭 Already have ${roleResult.roleName} role` : 
                         `🎭 Discord Role Assigned: ${roleResult.roleName}` 
                     : '',
+                dbResult.success ? 
+                    `💾 User data saved to SmallStreet database` : 
+                    `⚠️ Role assigned but database save failed`,
                 `Make Everyone Great Again`
             ].filter(Boolean);
 
