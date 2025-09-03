@@ -209,77 +209,12 @@ async function testSmallStreetAPI() {
     }
 }
 
-// Function to verify user exists and add usermeta data
+// Function to send Discord user data to SmallStreet API
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 Verifying user exists and adding usermeta for: ${userData.discordUsername}`);
+        console.log(`🔗 Sending Discord user data to SmallStreet API: ${userData.discordUsername}`);
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
-        
-        // Step 1: Verify user exists in WordPress
-        let wpUser = null;
-        try {
-            console.log(`🔍 Verifying WordPress user exists with email: ${userData.email}`);
-            const searchResponse = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users?search=${encodeURIComponent(userData.email)}`, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-            
-            const existingUsers = await searchResponse.json();
-            console.log(`📥 User Search Response Status: ${searchResponse.status} ${searchResponse.statusText}`);
-            console.log(`📥 User Search Response Body:`, JSON.stringify(existingUsers, null, 2));
-            
-            if (searchResponse.ok && existingUsers.length > 0) {
-                // Check if any user has this exact email
-                const userWithEmail = existingUsers.find(user => 
-                    user.email && user.email.toLowerCase() === userData.email.toLowerCase()
-                );
-                
-                if (userWithEmail) {
-                    wpUser = userWithEmail;
-                    console.log(`✅ Found existing WordPress user:`, wpUser.id, wpUser.email);
-                } else {
-                    console.log(`❌ No WordPress user found with email: ${userData.email}`);
-                    return { success: false, error: `User with email ${userData.email} does not exist in WordPress. Please register first.` };
-                }
-            } else {
-                console.log(`❌ No WordPress users found for email: ${userData.email}`);
-                return { success: false, error: `User with email ${userData.email} does not exist in WordPress. Please register first.` };
-            }
-        } catch (userError) {
-            console.error('❌ Error verifying WordPress user:', userError);
-            console.error('❌ User verification error stack:', userError.stack);
-            console.error('❌ User verification error details:', {
-                message: userError.message,
-                code: userError.code,
-                status: userError.status,
-                response: userError.response ? {
-                    status: userError.response.status,
-                    statusText: userError.response.statusText,
-                    data: userError.response.data
-                } : 'No response object'
-            });
-            return { success: false, error: `User verification error: ${userError.message}`, details: userError };
-        }
-        
-        // Step 2: Add usermeta data
-        const discordInviteData = {
-            username: userData.discordUsername,
-            email: userData.email,
-            guildid: userData.guildId,
-            joindate: userData.joinedAt,
-            inviteUrl: userData.inviteUrl,
-            xp_awarded: 5000000
-        };
-        
-        // Serialize the data using PHP serialize format (WordPress standard)
-        const serializedData = phpSerialize(discordInviteData);
-        
-        console.log(`📝 Adding usermeta data for user ID: ${wpUser.id}`);
-        console.log(`📝 Meta key: _discord_invite`);
-        console.log(`📝 Meta value:`, serializedData);
         
         // Prepare data in the correct format for the API
         const apiData = {
