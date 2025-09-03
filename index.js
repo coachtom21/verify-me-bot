@@ -235,13 +235,17 @@ async function insertUserToSmallStreetUsermeta(userData) {
             console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
             console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
             
+            const requestHeaders = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
+            };
+            
+            console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
+            console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
+            
             const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                },
+                headers: requestHeaders,
                 body: JSON.stringify(apiData)
             });
             
@@ -610,17 +614,21 @@ client.on('messageCreate', async (message) => {
             
             await message.reply(`🔑 API Key Status:\n- Present: ✅\n- Length: ${apiKey.length} characters\n- First 8 chars: ${apiKey.substring(0, 8)}...`);
             
-            // Test with a simple request
+            // Test with the exact same data as your working example
             const testData = {
-                discord_id: 'test123',
-                discord_username: 'testuser',
-                discord_display_name: 'Test User',
-                email: 'test@example.com',
-                joined_at: '2025-01-03 10:00:00',
-                guild_id: 'testguild',
-                joined_via_invite: 'test_invite',
+                discord_id: '123456789',
+                discord_username: 'JohnDoe',
+                discord_display_name: 'John',
+                email: 'realuser@smallstreet.app',
+                joined_at: '2025-09-03 10:00:00',
+                guild_id: '987654321',
+                joined_via_invite: 'custom_invite',
                 xp_awarded: 1000
             };
+            
+            console.log('🧪 Testing API with exact same data as working example...');
+            console.log('🧪 Request data:', JSON.stringify(testData, null, 2));
+            console.log('🧪 API Key:', apiKey);
             
             const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
@@ -632,9 +640,12 @@ client.on('messageCreate', async (message) => {
             });
             
             const result = await response.json();
+            console.log('🧪 API Response:', result);
+            
             await message.reply(`🧪 API Key Test Response:\n- Status: ${response.status}\n- Result: \`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
             
         } catch (error) {
+            console.error('🧪 API Key test error:', error);
             await message.reply(`❌ API Key test failed: ${error.message}`);
         }
         return;
