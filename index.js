@@ -527,32 +527,39 @@ client.on('guildMemberAdd', async (member) => {
             await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
         }
         
+        // Insert user data to database when they join (do this first)
+        console.log(`💾 Inserting user data to database for new member: ${member.user.tag}`);
+        console.log(`💾 User data being sent:`, JSON.stringify(userData, null, 2));
+        
+        try {
+            const dbResult = await insertUserToSmallStreetUsermeta(userData);
+            
+            if (dbResult.success) {
+                console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
+            } else {
+                console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
+            }
+        } catch (dbError) {
+            console.error(`❌ Database insertion error for ${member.user.tag}:`, dbError);
+            console.error(`❌ Database error stack:`, dbError.stack);
+        }
+
         // Send DM with instructions
-            try {
-                await member.send(`🎉 **Welcome to SmallStreet!**
+        try {
+            await member.send(`🎉 **Welcome to SmallStreet!**
 
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
 • Get your Discord roles based on your membership level
-• Receive XP rewards after verification
+• Receive **5,000,000 XP** rewards after verification
 
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
 *Make Everyone Great Again* 🚀`);
                 
             console.log(`📧 Sent welcome DM to ${member.user.tag}`);
-            } catch (dmError) {
+        } catch (dmError) {
             console.error(`❌ Could not send welcome DM to ${member.user.tag}:`, dmError.message);
-        }
-
-        // Insert user data to database when they join
-        console.log(`💾 Inserting user data to database for new member: ${member.user.tag}`);
-        const dbResult = await insertUserToSmallStreetUsermeta(userData);
-        
-        if (dbResult.success) {
-            console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
-        } else {
-            console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
         }
         
     } catch (error) {
@@ -594,6 +601,46 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('🧪 Database test failed:', error);
             await message.reply(`❌ Test failed: ${error.message}\n\nCheck console for detailed error logs.`);
+        }
+        return;
+    }
+    
+    // Handle test command to simulate member join
+    if (message.content === '!testjoin' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 Simulating member join event...');
+            
+            // Simulate the member join data structure
+            const member = {
+                user: {
+                    id: message.author.id,
+                    username: message.author.username,
+                    tag: message.author.tag
+                },
+                displayName: message.author.displayName || message.author.username,
+                guild: {
+                    id: message.guild.id
+                }
+            };
+            
+            // Prepare user data exactly like in guildMemberAdd
+            const userData = {
+                discordId: member.user.id,
+                discordUsername: member.user.username,
+                displayName: member.displayName,
+                email: `${member.user.username}@discord.local`,
+                guildId: member.guild.id,
+                joinedAt: new Date().toISOString(),
+                inviteUrl: 'https://discord.gg/smallstreet'
+            };
+            
+            console.log('🧪 Simulating member join with data:', JSON.stringify(userData, null, 2));
+            const dbResult = await insertUserToSmallStreetUsermeta(userData);
+            
+            await message.reply(`🧪 **Member Join Simulation Result:**\n\`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+        } catch (error) {
+            console.error('🧪 Member join simulation failed:', error);
+            await message.reply(`❌ Simulation failed: ${error.message}`);
         }
         return;
     }
