@@ -365,6 +365,70 @@ async function verifySmallStreetMembership(email) {
     }
 }
 
+// Function to send Discord user data to SmallStreet API
+async function insertUserToSmallStreetUsermeta(userData) {
+    try {
+        console.log(`🔗 Sending Discord user data to SmallStreet API: ${userData.discordUsername}`);
+        console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
+        console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
+        
+        // Prepare data in the correct format for the API
+        const apiData = {
+            discord_id: userData.discordId,
+            discord_username: userData.discordUsername,
+            discord_display_name: userData.displayName,
+            email: userData.email,
+            joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
+            guild_id: userData.guildId,
+            joined_via_invite: userData.inviteUrl,
+            xp_awarded: 5000000
+        };
+        
+        console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
+        
+        // Send data to the custom API endpoint
+        try {
+            console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
+            console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
+            
+            const requestHeaders = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
+            };
+            
+            console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
+            console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
+            
+            const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+                method: 'POST',
+                headers: requestHeaders,
+                body: JSON.stringify(apiData)
+            });
+            
+            const apiResult = await apiResponse.json();
+            console.log(`📥 API Response Status: ${apiResponse.status} ${apiResponse.statusText}`);
+            console.log(`📥 API Response Body:`, JSON.stringify(apiResult, null, 2));
+            
+            if (apiResponse.ok) {
+                console.log(`✅ Successfully sent data to SmallStreet API`);
+                return { success: true, data: apiResult };
+            } else {
+                console.error(`❌ API request failed:`, apiResult);
+                return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
+            }
+        } catch (apiError) {
+            console.error('❌ Error sending data to API:', apiError);
+            console.error('❌ API error stack:', apiError.stack);
+            return { success: false, error: `API error: ${apiError.message}`, details: apiError };
+        }
+        
+    } catch (error) {
+        console.error('❌ Error inserting user to SmallStreet usermeta:', error);
+        console.error('❌ Error stack trace:', error.stack);
+        return { success: false, error: error.message, details: error };
+    }
+}
+
 // Assign role based on membership
 async function assignRoleBasedOnMembership(member, membershipType) {
     try {
