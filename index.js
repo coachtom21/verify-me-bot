@@ -435,11 +435,6 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
         const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
 
-        console.log(`🎭 Role Assignment Debug:`);
-        console.log(`🎭 Membership Type: ${membershipType}`);
-        console.log(`🎭 MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}`);
-        console.log(`🎭 PATRON_ROLE_ID: ${PATRON_ROLE_ID}`);
-
         // Check if role IDs are set
         if (!MEGAVOTER_ROLE_ID || !PATRON_ROLE_ID) {
             console.error('❌ Role IDs not set in environment variables');
@@ -449,9 +444,6 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         // Check if roles exist in the guild
         const megavoterRole = member.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
         const patronRole = member.guild.roles.cache.get(PATRON_ROLE_ID);
-        
-        console.log(`🎭 MEGAvoter role found: ${megavoterRole ? megavoterRole.name : 'NOT FOUND'}`);
-        console.log(`🎭 Patron role found: ${patronRole ? patronRole.name : 'NOT FOUND'}`);
 
         if (!megavoterRole || !patronRole) {
             console.error('❌ One or more roles not found in guild');
@@ -462,47 +454,33 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         const hasMegavoter = member.roles.cache.has(MEGAVOTER_ROLE_ID);
         const hasPatron = member.roles.cache.has(PATRON_ROLE_ID);
 
-        console.log(`🎭 User has MEGAvoter: ${hasMegavoter}`);
-        console.log(`🎭 User has Patron: ${hasPatron}`);
-
         // Return early if user already has the appropriate role
         if (membershipType.toLowerCase() === 'pioneer' && hasMegavoter) {
-            console.log(`🎭 User already has MEGAvoter role`);
             return { roleName: "MEGAvoter", alreadyHas: true };
         } else if (membershipType.toLowerCase() === 'patron' && hasPatron) {
-            console.log(`🎭 User already has Patron role`);
             return { roleName: "Patron", alreadyHas: true };
         }
 
         // Remove existing roles
-        console.log(`🎭 Removing existing roles...`);
         if (hasMegavoter) {
             await member.roles.remove(megavoterRole);
-            console.log(`🎭 Removed MEGAvoter role`);
         }
         if (hasPatron) {
             await member.roles.remove(patronRole);
-            console.log(`🎭 Removed Patron role`);
         }
 
         // Assign new role
         if (membershipType.toLowerCase() === 'pioneer') {
-            console.log(`🎭 Assigning MEGAvoter role...`);
             await member.roles.add(megavoterRole);
-            console.log(`🎭 Successfully assigned MEGAvoter role`);
-                return { roleName: "MEGAvoter", alreadyHas: false };
+            return { roleName: "MEGAvoter", alreadyHas: false };
         } else if (membershipType.toLowerCase() === 'patron') {
-            console.log(`🎭 Assigning Patron role...`);
             await member.roles.add(patronRole);
-            console.log(`🎭 Successfully assigned Patron role`);
-                return { roleName: "Patron", alreadyHas: false };
-        } else {
-            console.error(`❌ Unknown membership type: ${membershipType}`);
-            return { roleName: null, alreadyHas: false, error: `Unknown membership type: ${membershipType}` };
+            return { roleName: "Patron", alreadyHas: false };
         }
+        
+        return { roleName: null, alreadyHas: false, error: `Unknown membership type: ${membershipType}` };
     } catch (error) {
         console.error('❌ Error assigning role:', error);
-        console.error('❌ Role assignment error stack:', error.stack);
         return { roleName: null, alreadyHas: false, error: error.message };
     }
 }
@@ -678,6 +656,25 @@ client.on('guildMemberAdd', async (member) => {
 
 // Handle QR code verification (existing code)
 client.on('messageCreate', async (message) => {
+    // Handle test command for role assignment
+    if (message.content === '!testrole' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
+            const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
+            
+            const patronRole = message.guild.roles.cache.get(PATRON_ROLE_ID);
+            const megavoterRole = message.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
+            
+            const botMember = message.guild.members.cache.get(client.user.id);
+            const botRole = botMember.roles.highest;
+            
+            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n- Bot's highest role: ${botRole.name}\n- Bot can manage roles: ${botMember.permissions.has('ManageRoles') ? '✅ Yes' : '❌ No'}\n- Bot role position: ${botRole.position}\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}`);
+        } catch (error) {
+            await message.reply(`❌ Role test failed: ${error.message}`);
+        }
+        return;
+    }
+
     // Handle test command for database insertion
     if (message.content === '!testdb' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
