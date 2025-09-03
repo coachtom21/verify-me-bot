@@ -215,6 +215,9 @@ async function insertUserToSmallStreetUsermeta(userData) {
             });
             
             const existingUsers = await searchResponse.json();
+            console.log(`📥 User Search Response Status: ${searchResponse.status} ${searchResponse.statusText}`);
+            console.log(`📥 User Search Response Body:`, JSON.stringify(existingUsers, null, 2));
+            
             if (searchResponse.ok && existingUsers.length > 0) {
                 wpUser = existingUsers[0];
                 console.log(`👤 Found existing WordPress user:`, wpUser.id);
@@ -235,13 +238,16 @@ async function insertUserToSmallStreetUsermeta(userData) {
                     })
                 });
                 
+                const createResult = await createResponse.json();
+                console.log(`📥 User Creation Response Status: ${createResponse.status} ${createResponse.statusText}`);
+                console.log(`📥 User Creation Response Body:`, JSON.stringify(createResult, null, 2));
+                
                 if (createResponse.ok) {
-                    wpUser = await createResponse.json();
+                    wpUser = createResult;
                     console.log(`👤 Created new WordPress user:`, wpUser.id);
                 } else {
-                    const errorData = await createResponse.json();
-                    console.error(`❌ Failed to create WordPress user:`, errorData);
-                    return { success: false, error: `Failed to create user: ${JSON.stringify(errorData)}` };
+                    console.error(`❌ Failed to create WordPress user:`, createResult);
+                    return { success: false, error: `Failed to create user: ${JSON.stringify(createResult)}` };
                 }
             }
         } catch (userError) {
