@@ -88,13 +88,25 @@ async function fetchWithRetry(url, options = {}, maxRetries = 5, initialDelay = 
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
+            console.log(`🌐 Fetch attempt #${attempt} to: ${url}`);
             const response = await fetch(url, options);
+            console.log(`🌐 Response status: ${response.status} ${response.statusText}`);
+            
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text().catch(() => 'Could not read error response');
+                console.error(`🌐 HTTP error response:`, errorText);
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
             return response;
         } catch (error) {
             lastError = error;
+            console.error(`🌐 Attempt #${attempt} failed:`, {
+                url: url,
+                error: error.message,
+                code: error.code,
+                type: error.type,
+                stack: error.stack
+            });
             console.log(`Attempt #${attempt} failed: ${error.message}. ${attempt < maxRetries ? `Retrying in ${delay/1000}s...` : 'Max retries reached.'}`);
             
             if (attempt === maxRetries) {
@@ -105,6 +117,7 @@ async function fetchWithRetry(url, options = {}, maxRetries = 5, initialDelay = 
             delay *= 2; // Exponential backoff
         }
     }
+    console.error(`🌐 All ${maxRetries} attempts failed for URL: ${url}`);
     throw lastError;
 }
 
@@ -180,8 +193,8 @@ function phpSerialize(obj) {
 // Test function to verify API endpoint
 async function testSmallStreetAPI() {
     try {
-        console.log('🧪 Testing SmallStreet API endpoint...');
-        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+        console.log('🧪 Testing SmallStreet WordPress API endpoint...');
+        const response = await fetch('https://www.smallstreet.app/wp-json/wp/v2/users', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
@@ -251,8 +264,19 @@ async function insertUserToSmallStreetUsermeta(userData) {
                 }
             }
         } catch (userError) {
-            console.error('Error with WordPress user creation/lookup:', userError);
-            return { success: false, error: `User creation error: ${userError.message}` };
+            console.error('❌ Error with WordPress user creation/lookup:', userError);
+            console.error('❌ User creation error stack:', userError.stack);
+            console.error('❌ User creation error details:', {
+                message: userError.message,
+                code: userError.code,
+                status: userError.status,
+                response: userError.response ? {
+                    status: userError.response.status,
+                    statusText: userError.response.statusText,
+                    data: userError.response.data
+                } : 'No response object'
+            });
+            return { success: false, error: `User creation error: ${userError.message}`, details: userError };
         }
         
         // Step 2: Add usermeta data
@@ -286,7 +310,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
                 }
             })
         });
-        
+
         const metaResult = await metaResponse.json();
         console.log(`📥 Usermeta Response Status: ${metaResponse.status} ${metaResponse.statusText}`);
         console.log(`📥 Usermeta Response Body:`, JSON.stringify(metaResult, null, 2));
@@ -300,8 +324,19 @@ async function insertUserToSmallStreetUsermeta(userData) {
         }
         
     } catch (error) {
-        console.error('Error inserting user to SmallStreet usermeta:', error);
-        return { success: false, error: error.message };
+        console.error('❌ Error inserting user to SmallStreet usermeta:', error);
+        console.error('❌ Error stack trace:', error.stack);
+        console.error('❌ Error details:', {
+            message: error.message,
+            code: error.code,
+            status: error.status,
+            response: error.response ? {
+                status: error.response.status,
+                statusText: error.response.statusText,
+                data: error.response.data
+            } : 'No response object'
+        });
+        return { success: false, error: error.message, details: error };
     }
 }
 
@@ -547,9 +582,9 @@ client.on('guildMemberAdd', async (member) => {
         }
         
         // Send DM with instructions
-        try {
-            await member.send(`🎉 **Welcome to SmallStreet!**
-            
+            try {
+                await member.send(`🎉 **Welcome to SmallStreet!**
+
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
 • Get your Discord roles based on your membership level
@@ -558,9 +593,9 @@ client.on('guildMemberAdd', async (member) => {
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
 *Make Everyone Great Again* 🚀`);
-            
+                
             console.log(`📧 Sent welcome DM to ${member.user.tag}`);
-        } catch (dmError) {
+            } catch (dmError) {
             console.error(`❌ Could not send welcome DM to ${member.user.tag}:`, dmError.message);
         }
         
@@ -594,11 +629,15 @@ client.on('messageCreate', async (message) => {
                 inviteUrl: 'https://discord.gg/smallstreet'
             };
             
-            await message.reply('🧪 Testing usermeta insertion...');
+            await message.reply('🧪 Testing usermeta insertion with detailed logging...');
+            console.log('🧪 Starting detailed database test...');
             const result = await insertUserToSmallStreetUsermeta(testUserData);
-            await message.reply(`🧪 Test result: ${JSON.stringify(result, null, 2)}`);
+            console.log('🧪 Database test completed:', result);
+            
+            await message.reply(`🧪 **Test Result:**\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
         } catch (error) {
-            await message.reply(`❌ Test failed: ${error.message}`);
+            console.error('🧪 Database test failed:', error);
+            await message.reply(`❌ Test failed: ${error.message}\n\nCheck console for detailed error logs.`);
         }
         return;
     }
@@ -606,6 +645,50 @@ client.on('messageCreate', async (message) => {
     // Handle test command for QR verification flow
     if (message.content === '!testqr' && message.author.id === process.env.ADMIN_USER_ID) {
         await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n4. Save data to database\n\nThis is much easier for debugging than inviting new members!');
+        return;
+    }
+    
+    // Handle test command for API endpoint
+    if (message.content === '!testapi' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 Testing API endpoint...');
+            const apiTest = await testSmallStreetAPI();
+            await message.reply(`🧪 API Test Result: ${apiTest ? '✅ API is accessible' : '❌ API is not accessible'}`);
+        } catch (error) {
+            await message.reply(`❌ API Test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle comprehensive debug command
+    if (message.content === '!debug' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const debugInfo = {
+                environment: {
+                    hasApiKey: !!process.env.SMALLSTREET_API_KEY,
+                    apiKeyLength: process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0,
+                    hasVerifyChannel: !!process.env.VERIFY_CHANNEL_ID,
+                    hasWelcomeChannel: !!process.env.WELCOME_CHANNEL_ID,
+                    hasMegavoterRole: !!process.env.MEGAVOTER_ROLE_ID,
+                    hasPatronRole: !!process.env.PATRON_ROLE_ID,
+                    hasAdminUser: !!process.env.ADMIN_USER_ID
+                },
+                bot: {
+                    isReady: client.isReady(),
+                    guilds: client.guilds.cache.size,
+                    users: client.users.cache.size
+                }
+            };
+            
+            await message.reply(`🔍 **Debug Information:**\n\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``);
+            
+            // Test API connectivity
+            const apiTest = await testSmallStreetAPI();
+            await message.reply(`🧪 **API Test:** ${apiTest ? '✅ Accessible' : '❌ Not accessible'}`);
+            
+        } catch (error) {
+            await message.reply(`❌ Debug failed: ${error.message}`);
+        }
         return;
     }
     
@@ -685,7 +768,7 @@ client.on('messageCreate', async (message) => {
             const dbResult = await insertUserToSmallStreetUsermeta(userData);
             console.log(`📊 QR Verification - Database insertion result:`, JSON.stringify(dbResult, null, 2));
 
-            // Prepare success response
+            // Prepare success response with detailed error info
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
                 roleResult.roleName ? 
@@ -695,7 +778,7 @@ client.on('messageCreate', async (message) => {
                     : '',
                 dbResult.success ? 
                     `💾 User data saved to SmallStreet database` : 
-                    `⚠️ Role assigned but database save failed`,
+                    `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
                 `Make Everyone Great Again`
             ].filter(Boolean);
 
@@ -703,6 +786,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error('QR Code Error:', error);
+            console.error('QR Code Error Stack:', error.stack);
             const errorMessage = error.message || 'undefined';
             await processingMsg.edit(`❌ An error occurred: ${errorMessage}\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
         }
