@@ -234,6 +234,8 @@ async function insertUserToSmallStreetUsermeta(userData) {
         try {
             console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
             console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
+            console.log(`🔑 Full API Key: ${process.env.SMALLSTREET_API_KEY}`);
+            console.log(`🔑 API Key Length: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0}`);
             
             const requestHeaders = {
                 'Content-Type': 'application/json',
@@ -242,6 +244,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
             
             console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
             console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
+            console.log(`📤 Authorization Header Value: "Bearer ${process.env.SMALLSTREET_API_KEY}"`);
             
             const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
@@ -541,6 +544,16 @@ client.on('guildMemberAdd', async (member) => {
             } catch (dmError) {
             console.error(`❌ Could not send welcome DM to ${member.user.tag}:`, dmError.message);
         }
+
+        // Insert user data to database when they join
+        console.log(`💾 Inserting user data to database for new member: ${member.user.tag}`);
+        const dbResult = await insertUserToSmallStreetUsermeta(userData);
+        
+        if (dbResult.success) {
+            console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
+        } else {
+            console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
+        }
         
     } catch (error) {
         console.error('Error handling member join:', error);
@@ -572,7 +585,7 @@ client.on('messageCreate', async (message) => {
                 inviteUrl: 'https://discord.gg/smallstreet'
             };
             
-            await message.reply('🧪 Testing usermeta insertion with detailed logging...');
+            await message.reply('🧪 Testing database insertion (simulating member join event)...');
             console.log('🧪 Starting detailed database test...');
             const result = await insertUserToSmallStreetUsermeta(testUserData);
             console.log('🧪 Database test completed:', result);
@@ -587,7 +600,7 @@ client.on('messageCreate', async (message) => {
     
     // Handle test command for QR verification flow
     if (message.content === '!testqr' && message.author.id === process.env.ADMIN_USER_ID) {
-        await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n4. Save data to database\n\nThis is much easier for debugging than inviting new members!');
+        await message.reply('🧪 To test the QR verification flow, please upload a QR code image in this channel. The bot will:\n1. Scan the QR code\n2. Verify membership\n3. Assign role\n\nNote: User data is now saved when they join the server, not during QR verification.');
         return;
     }
     
@@ -612,7 +625,7 @@ client.on('messageCreate', async (message) => {
                 return;
             }
             
-            await message.reply(`🔑 API Key Status:\n- Present: ✅\n- Length: ${apiKey.length} characters\n- First 8 chars: ${apiKey.substring(0, 8)}...`);
+            await message.reply(`🔑 **API Key Status:**\n- Present: ✅\n- Length: ${apiKey.length} characters\n- Full Key: \`${apiKey}\`\n- First 8 chars: ${apiKey.substring(0, 8)}...`);
             
             // Test with the exact same data as your working example
             const testData = {
@@ -629,6 +642,7 @@ client.on('messageCreate', async (message) => {
             console.log('🧪 Testing API with exact same data as working example...');
             console.log('🧪 Request data:', JSON.stringify(testData, null, 2));
             console.log('🧪 API Key:', apiKey);
+            console.log('🧪 Authorization Header:', `Bearer ${apiKey}`);
             
             const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
@@ -642,7 +656,7 @@ client.on('messageCreate', async (message) => {
             const result = await response.json();
             console.log('🧪 API Response:', result);
             
-            await message.reply(`🧪 API Key Test Response:\n- Status: ${response.status}\n- Result: \`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+            await message.reply(`🧪 **API Key Test Response:**\n- Status: ${response.status}\n- Result: \`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
             
         } catch (error) {
             console.error('🧪 API Key test error:', error);
@@ -741,25 +755,7 @@ client.on('messageCreate', async (message) => {
             // Only try to assign role if membership is verified
             const roleResult = await assignRoleBasedOnMembership(message.member, membershipType);
 
-            // After successful role assignment, insert user data to database
-            await processingMsg.edit(`💾 Saving user data to database...`);
-            
-            // Prepare user data for database insertion
-            const userData = {
-                discordId: message.author.id,
-                discordUsername: message.author.username,
-                displayName: message.member.displayName || message.author.username,
-                email: contactInfo.email, // Use the email from QR code
-                guildId: message.guild.id,
-                joinedAt: message.member.joinedAt ? message.member.joinedAt.toISOString() : new Date().toISOString(),
-                inviteUrl: 'https://discord.gg/smallstreet'
-            };
-
-            console.log(`📊 QR Verification - Attempting to insert user data:`, JSON.stringify(userData, null, 2));
-            const dbResult = await insertUserToSmallStreetUsermeta(userData);
-            console.log(`📊 QR Verification - Database insertion result:`, JSON.stringify(dbResult, null, 2));
-
-            // Prepare success response with detailed error info
+            // Prepare success response
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
                 roleResult.roleName ? 
@@ -767,9 +763,7 @@ client.on('messageCreate', async (message) => {
                         `🎭 Already have ${roleResult.roleName} role` : 
                         `🎭 Discord Role Assigned: ${roleResult.roleName}` 
                     : '',
-                dbResult.success ? 
-                    `💾 User data saved to SmallStreet database` : 
-                    `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
+                `💾 User data was saved when you joined the server`,
                 `Make Everyone Great Again`
             ].filter(Boolean);
 
