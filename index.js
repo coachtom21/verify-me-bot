@@ -212,6 +212,7 @@ async function testSmallStreetAPI() {
     }
 }
 
+
 // Function to send Discord user data to SmallStreet API
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
@@ -221,12 +222,12 @@ async function insertUserToSmallStreetUsermeta(userData) {
         
         // Prepare data in the correct format for the API
         const apiData = {
-            discord_id: userData.discordId,
-            discord_username: userData.discordUsername,
-            discord_display_name: userData.displayName,
+                discord_id: userData.discordId,
+                discord_username: userData.discordUsername,
+                discord_display_name: userData.displayName,
             email: userData.email,
             joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
-            guild_id: userData.guildId,
+                guild_id: userData.guildId,
             joined_via_invite: userData.inviteUrl,
             xp_awarded: 5000000
         };
@@ -262,7 +263,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
             if (apiResponse.ok) {
                 console.log(`✅ Successfully sent data to SmallStreet API`);
                 return { success: true, data: apiResult };
-            } else {
+        } else {
                 console.error(`❌ API request failed:`, apiResult);
                 return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
             }
@@ -370,43 +371,75 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
         const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
 
+        console.log(`🎭 Role Assignment Debug:`);
+        console.log(`🎭 Membership Type: ${membershipType}`);
+        console.log(`🎭 MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}`);
+        console.log(`🎭 PATRON_ROLE_ID: ${PATRON_ROLE_ID}`);
+
+        // Check if role IDs are set
+        if (!MEGAVOTER_ROLE_ID || !PATRON_ROLE_ID) {
+            console.error('❌ Role IDs not set in environment variables');
+            return { roleName: null, alreadyHas: false, error: 'Role IDs not configured' };
+        }
+
+        // Check if roles exist in the guild
+        const megavoterRole = member.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
+        const patronRole = member.guild.roles.cache.get(PATRON_ROLE_ID);
+        
+        console.log(`🎭 MEGAvoter role found: ${megavoterRole ? megavoterRole.name : 'NOT FOUND'}`);
+        console.log(`🎭 Patron role found: ${patronRole ? patronRole.name : 'NOT FOUND'}`);
+
+        if (!megavoterRole || !patronRole) {
+            console.error('❌ One or more roles not found in guild');
+            return { roleName: null, alreadyHas: false, error: 'Roles not found in guild' };
+        }
+
         // Check if user already has the roles
         const hasMegavoter = member.roles.cache.has(MEGAVOTER_ROLE_ID);
         const hasPatron = member.roles.cache.has(PATRON_ROLE_ID);
 
+        console.log(`🎭 User has MEGAvoter: ${hasMegavoter}`);
+        console.log(`🎭 User has Patron: ${hasPatron}`);
+
         // Return early if user already has the appropriate role
         if (membershipType.toLowerCase() === 'pioneer' && hasMegavoter) {
+            console.log(`🎭 User already has MEGAvoter role`);
             return { roleName: "MEGAvoter", alreadyHas: true };
         } else if (membershipType.toLowerCase() === 'patron' && hasPatron) {
+            console.log(`🎭 User already has Patron role`);
             return { roleName: "Patron", alreadyHas: true };
         }
 
         // Remove existing roles
-        [MEGAVOTER_ROLE_ID, PATRON_ROLE_ID].forEach(async (roleId) => {
-            const role = member.guild.roles.cache.get(roleId);
-            if (role && member.roles.cache.has(roleId)) {
-                await member.roles.remove(role);
-            }
-        });
+        console.log(`🎭 Removing existing roles...`);
+        if (hasMegavoter) {
+            await member.roles.remove(megavoterRole);
+            console.log(`🎭 Removed MEGAvoter role`);
+        }
+        if (hasPatron) {
+            await member.roles.remove(patronRole);
+            console.log(`🎭 Removed Patron role`);
+        }
 
         // Assign new role
         if (membershipType.toLowerCase() === 'pioneer') {
-            const role = member.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
-            if (role) {
-                await member.roles.add(role);
+            console.log(`🎭 Assigning MEGAvoter role...`);
+            await member.roles.add(megavoterRole);
+            console.log(`🎭 Successfully assigned MEGAvoter role`);
                 return { roleName: "MEGAvoter", alreadyHas: false };
-            }
         } else if (membershipType.toLowerCase() === 'patron') {
-            const role = member.guild.roles.cache.get(PATRON_ROLE_ID);
-            if (role) {
-                await member.roles.add(role);
+            console.log(`🎭 Assigning Patron role...`);
+            await member.roles.add(patronRole);
+            console.log(`🎭 Successfully assigned Patron role`);
                 return { roleName: "Patron", alreadyHas: false };
-            }
+        } else {
+            console.error(`❌ Unknown membership type: ${membershipType}`);
+            return { roleName: null, alreadyHas: false, error: `Unknown membership type: ${membershipType}` };
         }
-        return { roleName: null, alreadyHas: false };
     } catch (error) {
-        console.error('Error assigning role:', error);
-        return { roleName: null, alreadyHas: false };
+        console.error('❌ Error assigning role:', error);
+        console.error('❌ Role assignment error stack:', error.stack);
+        return { roleName: null, alreadyHas: false, error: error.message };
     }
 }
 
@@ -547,8 +580,8 @@ client.on('guildMemberAdd', async (member) => {
         console.log(`👋 Member joined: ${member.user.tag} - Database insertion will happen during QR verification with real email`);
 
         // Send DM with instructions (optional - don't fail if DM is disabled)
-        try {
-            await member.send(`🎉 **Welcome to SmallStreet!**
+            try {
+                await member.send(`🎉 **Welcome to SmallStreet!**
 
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
@@ -560,7 +593,7 @@ client.on('guildMemberAdd', async (member) => {
 *Make Everyone Great Again* 🚀`);
                 
             console.log(`📧 Sent welcome DM to ${member.user.tag}`);
-        } catch (dmError) {
+            } catch (dmError) {
             console.log(`⚠️ Could not send welcome DM to ${member.user.tag}: ${dmError.message} (This is normal if user has DMs disabled)`);
         }
         
@@ -801,6 +834,25 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
+    // Handle command to test role assignment
+    if (message.content === '!testrole' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
+            const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
+            
+            const patronRole = message.guild.roles.cache.get(PATRON_ROLE_ID);
+            const megavoterRole = message.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
+            
+            const botMember = message.guild.members.cache.get(client.user.id);
+            const botRole = botMember.roles.highest;
+            
+            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n- Bot's highest role: ${botRole.name}\n- Bot can manage roles: ${botMember.permissions.has('ManageRoles') ? '✅ Yes' : '❌ No'}\n- Bot role position: ${botRole.position}\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}`);
+        } catch (error) {
+            await message.reply(`❌ Role test failed: ${error.message}`);
+        }
+        return;
+    }
+    
     // Handle QR code verification (existing code)
     if (message.author.bot || 
         message.channel.id !== process.env.VERIFY_CHANNEL_ID || 
@@ -919,7 +971,9 @@ client.on('messageCreate', async (message) => {
             // Prepare success response for new verification
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
-                `🎭 Discord Role Assigned: ${roleResult.roleName}`,
+                roleResult.roleName ? 
+                    `🎭 Discord Role Assigned: ${roleResult.roleName}` : 
+                    `⚠️ Role assignment failed: ${roleResult.error || 'Unknown error'}`,
                 dbResult.success ? 
                     `💾 User data saved to SmallStreet database` : 
                     `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
