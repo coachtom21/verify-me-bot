@@ -498,6 +498,9 @@ const processingUsers = new Set();
 client.on('guildMemberAdd', async (member) => {
     try {
         console.log(`👋 New member joined: ${member.user.tag} (${member.user.id})`);
+        console.log(`👋 Guild ID: ${member.guild.id}`);
+        console.log(`👋 Member display name: ${member.displayName}`);
+        console.log(`👋 Member joined at: ${member.joinedAt}`);
         
         // Try to get invite information
         let inviteUsed = null;
@@ -548,10 +551,11 @@ client.on('guildMemberAdd', async (member) => {
         try {
             await member.send(`🎉 **Welcome to SmallStreet!**
 
+🎯 **You've received 5,000,000 XP for joining!**
+
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
 • Get your Discord roles based on your membership level
-• Receive **5,000,000 XP** rewards after verification
 
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
@@ -728,7 +732,8 @@ client.on('messageCreate', async (message) => {
                 bot: {
                     isReady: client.isReady(),
                     guilds: client.guilds.cache.size,
-                    users: client.users.cache.size
+                    users: client.users.cache.size,
+                    intents: client.options.intents
                 }
             };
             
@@ -740,6 +745,20 @@ client.on('messageCreate', async (message) => {
             
         } catch (error) {
             await message.reply(`❌ Debug failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to check member join events
+    if (message.content === '!checkevents' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const guild = message.guild;
+            const memberCount = guild.memberCount;
+            const botMember = guild.members.cache.get(client.user.id);
+            
+            await message.reply(`🔍 **Event Check:**\n- Guild: ${guild.name}\n- Member Count: ${memberCount}\n- Bot has GuildMembers intent: ${client.options.intents.has('GuildMembers')}\n- Bot can see members: ${botMember ? 'Yes' : 'No'}\n\nTry inviting someone to test the guildMemberAdd event!`);
+        } catch (error) {
+            await message.reply(`❌ Event check failed: ${error.message}`);
         }
         return;
     }
