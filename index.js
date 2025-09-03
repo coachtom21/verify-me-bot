@@ -12,6 +12,9 @@ const PORT = process.env.PORT || 3000;
 // Track bot instance
 let isInitialized = false;
 
+// Debug mode for database insertion
+let debugMode = true;
+
 // Healthcheck endpoint
 app.get('/', (req, res) => {
     res.status(200).json({ 
@@ -539,15 +542,51 @@ client.on('guildMemberAdd', async (member) => {
             
             if (dbResult.success) {
                 console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
+                
+                // Send success message to admin channel for debugging (if debug mode is enabled)
+                if (debugMode) {
+                    try {
+                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                        if (adminUser) {
+                            await adminUser.send(`✅ **Database Insertion Success**\n**User:** ${member.user.tag} (${member.user.id})\n**Result:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                        }
+                    } catch (adminDmError) {
+                        console.log('Could not send admin DM:', adminDmError.message);
+                    }
+                }
             } else {
                 console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
+                
+                // Send error message to admin channel for debugging (if debug mode is enabled)
+                if (debugMode) {
+                    try {
+                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                        if (adminUser) {
+                            await adminUser.send(`❌ **Database Insertion Failed**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                        }
+                    } catch (adminDmError) {
+                        console.log('Could not send admin DM:', adminDmError.message);
+                    }
+                }
             }
         } catch (dbError) {
             console.error(`❌ Database insertion error for ${member.user.tag}:`, dbError);
             console.error(`❌ Database error stack:`, dbError.stack);
+            
+            // Send error message to admin channel for debugging (if debug mode is enabled)
+            if (debugMode) {
+                try {
+                    const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                    if (adminUser) {
+                        await adminUser.send(`❌ **Database Insertion Exception**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** ${dbError.message}\n**Stack:** \`\`\`\n${dbError.stack}\n\`\`\``);
+                    }
+                } catch (adminDmError) {
+                    console.log('Could not send admin DM:', adminDmError.message);
+                }
+            }
         }
 
-        // Send DM with instructions
+        // Send DM with instructions (optional - don't fail if DM is disabled)
         try {
             await member.send(`🎉 **Welcome to SmallStreet!**
 
@@ -563,7 +602,7 @@ client.on('guildMemberAdd', async (member) => {
                 
             console.log(`📧 Sent welcome DM to ${member.user.tag}`);
         } catch (dmError) {
-            console.error(`❌ Could not send welcome DM to ${member.user.tag}:`, dmError.message);
+            console.log(`⚠️ Could not send welcome DM to ${member.user.tag}: ${dmError.message} (This is normal if user has DMs disabled)`);
         }
         
     } catch (error) {
@@ -760,6 +799,32 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             await message.reply(`❌ Event check failed: ${error.message}`);
         }
+        return;
+    }
+    
+    // Handle command to check channel IDs
+    if (message.content === '!checkchannels' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const verifyChannel = client.channels.cache.get(process.env.VERIFY_CHANNEL_ID);
+            const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+            
+            await message.reply(`🔍 **Channel Check:**\n- Verify Channel ID: ${process.env.VERIFY_CHANNEL_ID}\n- Verify Channel Found: ${verifyChannel ? `✅ ${verifyChannel.name}` : '❌ Not found'}\n- Welcome Channel ID: ${process.env.WELCOME_CHANNEL_ID}\n- Welcome Channel Found: ${welcomeChannel ? `✅ ${welcomeChannel.name}` : '❌ Not found'}\n\nIf channels are not found, the bot might not have access or the IDs are incorrect.`);
+        } catch (error) {
+            await message.reply(`❌ Channel check failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to toggle debug mode
+    if (message.content === '!debugmode' && message.author.id === process.env.ADMIN_USER_ID) {
+        debugMode = !debugMode;
+        await message.reply(`🔧 **Debug Mode:** ${debugMode ? '✅ Enabled' : '❌ Disabled'}\n\nWhen enabled, you'll receive DMs with database insertion results when users join the server.`);
+        return;
+    }
+    
+    // Handle command to show current debug status
+    if (message.content === '!debugstatus' && message.author.id === process.env.ADMIN_USER_ID) {
+        await message.reply(`🔍 **Debug Status:**\n- Debug Mode: ${debugMode ? '✅ Enabled' : '❌ Disabled'}\n- Admin User ID: ${process.env.ADMIN_USER_ID}\n- API Key Present: ${!!process.env.SMALLSTREET_API_KEY}\n\nUse \`!debugmode\` to toggle debug notifications.`);
         return;
     }
     
