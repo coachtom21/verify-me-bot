@@ -193,8 +193,8 @@ function phpSerialize(obj) {
 // Test function to verify API endpoint
 async function testSmallStreetAPI() {
     try {
-        console.log('🧪 Testing SmallStreet WordPress API endpoint...');
-        const response = await fetch('https://www.smallstreet.app/wp-json/wp/v2/users', {
+        console.log('🧪 Testing SmallStreet Discord API endpoint...');
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
@@ -209,17 +209,17 @@ async function testSmallStreetAPI() {
     }
 }
 
-// Function to create WordPress user and add usermeta data
+// Function to verify user exists and add usermeta data
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 Creating WordPress user and usermeta for: ${userData.discordUsername}`);
+        console.log(`🔗 Verifying user exists and adding usermeta for: ${userData.discordUsername}`);
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
         
-        // Step 1: Create or get WordPress user
+        // Step 1: Verify user exists in WordPress
         let wpUser = null;
         try {
-            // First, try to find existing user by email
+            console.log(`🔍 Verifying WordPress user exists with email: ${userData.email}`);
             const searchResponse = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users?search=${encodeURIComponent(userData.email)}`, {
                 headers: {
                     'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
@@ -232,41 +232,26 @@ async function insertUserToSmallStreetUsermeta(userData) {
             console.log(`📥 User Search Response Body:`, JSON.stringify(existingUsers, null, 2));
             
             if (searchResponse.ok && existingUsers.length > 0) {
-                wpUser = existingUsers[0];
-                console.log(`👤 Found existing WordPress user:`, wpUser.id);
-            } else {
-                // Create new WordPress user
-                const createResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/wp/v2/users', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    },
-                    body: JSON.stringify({
-                        username: userData.discordUsername,
-                        email: userData.email,
-                        first_name: userData.displayName,
-                        password: Math.random().toString(36).slice(-8) // Random password
-                    })
-                });
+                // Check if any user has this exact email
+                const userWithEmail = existingUsers.find(user => 
+                    user.email && user.email.toLowerCase() === userData.email.toLowerCase()
+                );
                 
-                const createResult = await createResponse.json();
-                console.log(`📥 User Creation Response Status: ${createResponse.status} ${createResponse.statusText}`);
-                console.log(`📥 User Creation Response Body:`, JSON.stringify(createResult, null, 2));
-                
-                if (createResponse.ok) {
-                    wpUser = createResult;
-                    console.log(`👤 Created new WordPress user:`, wpUser.id);
+                if (userWithEmail) {
+                    wpUser = userWithEmail;
+                    console.log(`✅ Found existing WordPress user:`, wpUser.id, wpUser.email);
                 } else {
-                    console.error(`❌ Failed to create WordPress user:`, createResult);
-                    return { success: false, error: `Failed to create user: ${JSON.stringify(createResult)}` };
+                    console.log(`❌ No WordPress user found with email: ${userData.email}`);
+                    return { success: false, error: `User with email ${userData.email} does not exist in WordPress. Please register first.` };
                 }
+            } else {
+                console.log(`❌ No WordPress users found for email: ${userData.email}`);
+                return { success: false, error: `User with email ${userData.email} does not exist in WordPress. Please register first.` };
             }
         } catch (userError) {
-            console.error('❌ Error with WordPress user creation/lookup:', userError);
-            console.error('❌ User creation error stack:', userError.stack);
-            console.error('❌ User creation error details:', {
+            console.error('❌ Error verifying WordPress user:', userError);
+            console.error('❌ User verification error stack:', userError.stack);
+            console.error('❌ User verification error details:', {
                 message: userError.message,
                 code: userError.code,
                 status: userError.status,
@@ -276,7 +261,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
                     data: userError.response.data
                 } : 'No response object'
             });
-            return { success: false, error: `User creation error: ${userError.message}`, details: userError };
+            return { success: false, error: `User verification error: ${userError.message}`, details: userError };
         }
         
         // Step 2: Add usermeta data
@@ -296,31 +281,47 @@ async function insertUserToSmallStreetUsermeta(userData) {
         console.log(`📝 Meta key: _discord_invite`);
         console.log(`📝 Meta value:`, serializedData);
         
-        // Add usermeta using WordPress REST API
-        const metaResponse = await fetchWithRetry(`https://www.smallstreet.app/wp-json/wp/v2/users/${wpUser.id}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            body: JSON.stringify({
-                meta: {
-                    '_discord_invite': serializedData
-                }
-            })
-        });
-
-        const metaResult = await metaResponse.json();
-        console.log(`📥 Usermeta Response Status: ${metaResponse.status} ${metaResponse.statusText}`);
-        console.log(`📥 Usermeta Response Body:`, JSON.stringify(metaResult, null, 2));
+        // Prepare data in the correct format for the API
+        const apiData = {
+            discord_id: userData.discordId,
+            discord_username: userData.discordUsername,
+            discord_display_name: userData.displayName,
+            email: userData.email,
+            joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
+            guild_id: userData.guildId,
+            joined_via_invite: userData.inviteUrl,
+            xp_awarded: 5000000
+        };
         
-        if (metaResponse.ok) {
-            console.log(`✅ Successfully added usermeta for user ${userData.discordUsername}`);
-            return { success: true, data: { user: wpUser, meta: metaResult } };
-        } else {
-            console.error(`❌ Failed to add usermeta:`, metaResult);
-            return { success: false, error: `Usermeta error: ${JSON.stringify(metaResult)}` };
+        console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
+        
+        // Send data to the custom API endpoint
+        try {
+            console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
+            const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
+                },
+                body: JSON.stringify(apiData)
+            });
+            
+            const apiResult = await apiResponse.json();
+            console.log(`📥 API Response Status: ${apiResponse.status} ${apiResponse.statusText}`);
+            console.log(`📥 API Response Body:`, JSON.stringify(apiResult, null, 2));
+            
+            if (apiResponse.ok) {
+                console.log(`✅ Successfully sent data to SmallStreet API`);
+                return { success: true, data: apiResult };
+            } else {
+                console.error(`❌ API request failed:`, apiResult);
+                return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
+            }
+        } catch (apiError) {
+            console.error('❌ Error sending data to API:', apiError);
+            console.error('❌ API error stack:', apiError.stack);
+            return { success: false, error: `API error: ${apiError.message}`, details: apiError };
         }
         
     } catch (error) {
