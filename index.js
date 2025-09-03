@@ -859,7 +859,19 @@ client.on('messageCreate', async (message) => {
             // Only try to assign role if membership is verified
             const roleResult = await assignRoleBasedOnMembership(message.member, membershipType);
 
-            // After successful role assignment, insert user data to database
+            // Check if user already has the role (already verified)
+            if (roleResult.alreadyHas) {
+                // User is already verified, don't insert to database
+                const response = [
+                    `✅ You have already verified as ${roleResult.roleName}`,
+                    `Make Everyone Great Again`
+                ].filter(Boolean);
+
+                await processingMsg.edit(response.join('\n'));
+                return; // Exit early, no database insertion
+            }
+
+            // User is new or role changed, proceed with database insertion
             await processingMsg.edit(`💾 Saving user data to database...`);
             
             // Prepare user data for database insertion
@@ -904,14 +916,10 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
-            // Prepare success response with detailed error info
+            // Prepare success response for new verification
             const response = [
                 `✅ Verified SmallStreet Membership - ${membershipType}`,
-                roleResult.roleName ? 
-                    roleResult.alreadyHas ? 
-                        `🎭 Already have ${roleResult.roleName} role` : 
-                        `🎭 Discord Role Assigned: ${roleResult.roleName}` 
-                    : '',
+                `🎭 Discord Role Assigned: ${roleResult.roleName}`,
                 dbResult.success ? 
                     `💾 User data saved to SmallStreet database` : 
                     `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
