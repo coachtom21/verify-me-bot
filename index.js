@@ -251,16 +251,12 @@ async function insertUserToSmallStreetUsermeta(userData) {
         
         // Step 2: Add usermeta data
         const discordInviteData = {
-            discord_id: userData.discordId,
-            discord_username: userData.discordUsername,
-            discord_display_name: userData.displayName,
-            joined_at: userData.joinedAt,
-            guild_id: userData.guildId,
-            invite_url: userData.inviteUrl,
-            xp_type: 'discord_invite',
-            xp_awarded: 5000000,
-            status: 'completed',
-            verification_date: new Date().toISOString()
+            username: userData.discordUsername,
+            email: userData.email,
+            guildid: userData.guildId,
+            joindate: userData.joinedAt,
+            inviteUrl: userData.inviteUrl,
+            xp_awarded: 5000000
         };
         
         // Serialize the data using PHP serialize format (WordPress standard)
