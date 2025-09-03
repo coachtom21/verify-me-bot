@@ -233,11 +233,14 @@ async function insertUserToSmallStreetUsermeta(userData) {
         // Send data to the custom API endpoint
         try {
             console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
+            console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
+            
             const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
                 body: JSON.stringify(apiData)
             });
@@ -592,6 +595,47 @@ client.on('messageCreate', async (message) => {
             await message.reply(`🧪 API Test Result: ${apiTest ? '✅ API is accessible' : '❌ API is not accessible'}`);
         } catch (error) {
             await message.reply(`❌ API Test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle test command for API key
+    if (message.content === '!testkey' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const apiKey = process.env.SMALLSTREET_API_KEY;
+            if (!apiKey) {
+                await message.reply('❌ API Key is not set in environment variables');
+                return;
+            }
+            
+            await message.reply(`🔑 API Key Status:\n- Present: ✅\n- Length: ${apiKey.length} characters\n- First 8 chars: ${apiKey.substring(0, 8)}...`);
+            
+            // Test with a simple request
+            const testData = {
+                discord_id: 'test123',
+                discord_username: 'testuser',
+                discord_display_name: 'Test User',
+                email: 'test@example.com',
+                joined_at: '2025-01-03 10:00:00',
+                guild_id: 'testguild',
+                joined_via_invite: 'test_invite',
+                xp_awarded: 1000
+            };
+            
+            const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(testData)
+            });
+            
+            const result = await response.json();
+            await message.reply(`🧪 API Key Test Response:\n- Status: ${response.status}\n- Result: \`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+            
+        } catch (error) {
+            await message.reply(`❌ API Key test failed: ${error.message}`);
         }
         return;
     }
