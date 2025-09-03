@@ -543,89 +543,17 @@ client.on('guildMemberAdd', async (member) => {
             await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
         }
         
-        // Insert user data to database when they join
-        console.log(`💾 Inserting user data to database for new member: ${member.user.tag}`);
-        console.log(`💾 User data being sent:`, JSON.stringify(userData, null, 2));
-        
-        try {
-            const dbResult = await insertUserToSmallStreetUsermeta(userData);
-            
-            if (dbResult.success) {
-                console.log(`✅ Successfully saved user data for ${member.user.tag} to database`);
-                
-                // Send success message to the user
-                try {
-                    await member.send(`✅ **Database Update:** Your data has been saved to SmallStreet database!\n**Email Used:** ${userData.email}\n**XP Awarded:** 5,000,000 XP\n**Status:** Successfully registered`);
-                } catch (userDmError) {
-                    console.log('Could not send user success DM:', userDmError.message);
-                }
-                
-                // Send success message to admin channel for debugging (if debug mode is enabled)
-                if (debugMode) {
-                    try {
-                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                        if (adminUser) {
-                            await adminUser.send(`✅ **Member Join - Database Success**\n**User:** ${member.user.tag} (${member.user.id})\n**Result:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
-                        }
-                    } catch (adminDmError) {
-                        console.log('Could not send admin DM:', adminDmError.message);
-                    }
-                }
-            } else {
-                console.error(`❌ Failed to save user data for ${member.user.tag}:`, dbResult.error);
-                
-                // Send error message to the user
-                try {
-                    await member.send(`❌ **Database Update Failed:** Could not save your data to SmallStreet database.\n**Email Used:** ${userData.email}\n**Error:** ${dbResult.error || 'Unknown error'}\n**Status:** Please contact support`);
-                } catch (userDmError) {
-                    console.log('Could not send user error DM:', userDmError.message);
-                }
-                
-                // Send error message to admin channel for debugging (if debug mode is enabled)
-                if (debugMode) {
-                    try {
-                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                        if (adminUser) {
-                            await adminUser.send(`❌ **Member Join - Database Failed**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
-                        }
-                    } catch (adminDmError) {
-                        console.log('Could not send admin DM:', adminDmError.message);
-                    }
-                }
-            }
-        } catch (dbError) {
-            console.error(`❌ Database insertion error for ${member.user.tag}:`, dbError);
-            console.error(`❌ Database error stack:`, dbError.stack);
-            
-            // Send error message to the user
-            try {
-                await member.send(`❌ **Database Error:** An error occurred while saving your data.\n**Error:** ${dbError.message}\n**Status:** Please contact support`);
-            } catch (userDmError) {
-                console.log('Could not send user error DM:', userDmError.message);
-            }
-            
-            // Send error message to admin channel for debugging (if debug mode is enabled)
-            if (debugMode) {
-                try {
-                    const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-                    if (adminUser) {
-                        await adminUser.send(`❌ **Member Join - Database Exception**\n**User:** ${member.user.tag} (${member.user.id})\n**Error:** ${dbError.message}\n**Stack:** \`\`\`\n${dbError.stack}\n\`\`\``);
-                    }
-                } catch (adminDmError) {
-                    console.log('Could not send admin DM:', adminDmError.message);
-                }
-            }
-        }
+        // Note: Database insertion happens during QR verification with real email, not on member join
+        console.log(`👋 Member joined: ${member.user.tag} - Database insertion will happen during QR verification with real email`);
 
         // Send DM with instructions (optional - don't fail if DM is disabled)
         try {
             await member.send(`🎉 **Welcome to SmallStreet!**
 
-🎯 **You've received 5,000,000 XP for joining!**
-
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
 • Get your Discord roles based on your membership level
+• Receive **5,000,000 XP** rewards after verification
 
 🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
 
