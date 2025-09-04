@@ -493,12 +493,24 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         // Assign new role
         if (membershipType.toLowerCase() === 'pioneer') {
             console.log(`🎭 Assigning MEGAvoter role`);
-            await member.roles.add(megavoterRole);
-            return { roleName: "MEGAvoter", alreadyHas: false };
+            try {
+                await member.roles.add(megavoterRole);
+                console.log(`✅ Successfully assigned MEGAvoter role`);
+                return { roleName: "MEGAvoter", alreadyHas: false };
+            } catch (roleError) {
+                console.error(`❌ Failed to assign MEGAvoter role:`, roleError);
+                return { roleName: null, alreadyHas: false, error: `Failed to assign MEGAvoter role: ${roleError.message}` };
+            }
         } else if (membershipType.toLowerCase() === 'patron') {
             console.log(`🎭 Assigning Patron role`);
-            await member.roles.add(patronRole);
-            return { roleName: "Patron", alreadyHas: false };
+            try {
+                await member.roles.add(patronRole);
+                console.log(`✅ Successfully assigned Patron role`);
+                return { roleName: "Patron", alreadyHas: false };
+            } catch (roleError) {
+                console.error(`❌ Failed to assign Patron role:`, roleError);
+                return { roleName: null, alreadyHas: false, error: `Failed to assign Patron role: ${roleError.message}` };
+            }
         }
         
         console.log(`❌ Unknown membership type: ${membershipType}`);
@@ -931,7 +943,17 @@ client.on('messageCreate', async (message) => {
             const botMember = message.guild.members.cache.get(client.user.id);
             const botRole = botMember.roles.highest;
             
-            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n- Bot's highest role: ${botRole.name}\n- Bot can manage roles: ${botMember.permissions.has('ManageRoles') ? '✅ Yes' : '❌ No'}\n- Bot role position: ${botRole.position}\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}`);
+            // Check specific permissions
+            const canManageRoles = botMember.permissions.has('ManageRoles');
+            const canManageGuild = botMember.permissions.has('ManageGuild');
+            const canViewChannel = botMember.permissions.has('ViewChannel');
+            const canSendMessages = botMember.permissions.has('SendMessages');
+            
+            // Check role hierarchy
+            const canManagePatron = patronRole ? botRole.position > patronRole.position : false;
+            const canManageMegavoter = megavoterRole ? botRole.position > megavoterRole.position : false;
+            
+            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n\n**Bot Permissions:**\n- Manage Roles: ${canManageRoles ? '✅ Yes' : '❌ No'}\n- Manage Guild: ${canManageGuild ? '✅ Yes' : '❌ No'}\n- View Channel: ${canViewChannel ? '✅ Yes' : '❌ No'}\n- Send Messages: ${canSendMessages ? '✅ Yes' : '❌ No'}\n\n**Role Hierarchy:**\n- Bot's highest role: ${botRole.name} (Position: ${botRole.position})\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}\n- Can manage Patron: ${canManagePatron ? '✅ Yes' : '❌ No'}\n- MEGAvoter role position: ${megavoterRole ? megavoterRole.position : 'N/A'}\n- Can manage MEGAvoter: ${canManageMegavoter ? '✅ Yes' : '❌ No'}`);
         } catch (error) {
             await message.reply(`❌ Role test failed: ${error.message}`);
         }
