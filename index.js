@@ -1130,9 +1130,6 @@ client.on('messageCreate', async (message) => {
                 roleResult.roleName ? 
                     `🎭 Discord Role Assigned: ${roleResult.roleName}` : 
                     `⚠️ Role assignment failed: ${roleResult.error || 'Unknown error'}`,
-                dbResult.success ? 
-                    `💾 User data saved to SmallStreet database` : 
-                    `⚠️ Role assigned but database save failed: ${dbResult.error || 'Unknown error'}`,
                 `Make Everyone Great Again`
             ].filter(Boolean);
 
