@@ -1100,7 +1100,7 @@ client.on('messageCreate', async (message) => {
             // Send DM response to user about database insertion
             try {
                 if (dbResult.success) {
-                    await message.author.send(`✅ **QR Verification - Database Update:** Your data has been updated in SmallStreet database!\n**Email Used:** ${userData.email}\n**XP Awarded:** 5,000,000 XP\n**Status:** Successfully updated`);
+                    await message.author.send(`✅ **QR Verification - You have received XP for joining the gracebook!**\n**Email Used:** ${userData.email}\n**XP Awarded:** 5,000,000 XP\n**Status:** Successfully updated`);
                 } else {
                     await message.author.send(`❌ **QR Verification - Database Update Failed:** Could not update your data in SmallStreet database.\n**Email Used:** ${userData.email}\n**Error:** ${dbResult.error || 'Unknown error'}\n**Status:** Please contact support`);
                 }
