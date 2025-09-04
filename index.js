@@ -651,7 +651,7 @@ client.on('guildMemberAdd', async (member) => {
         // Send welcome message to new member
         const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
         if (welcomeChannel) {
-            await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
+            await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to Gracebook!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
         }
         
         // Note: Database insertion happens during QR verification with real email, not on member join
@@ -659,7 +659,7 @@ client.on('guildMemberAdd', async (member) => {
 
         // Send DM with instructions (optional - don't fail if DM is disabled)
             try {
-                await member.send(`🎉 **Welcome to SmallStreet!**
+                await member.send(`🎉 **Welcome to Gracebook!**
 
 🎯 **Next Steps:**
 • Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
@@ -682,7 +682,7 @@ client.on('guildMemberAdd', async (member) => {
         try {
             const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
             if (welcomeChannel) {
-                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to the SmallStreet community!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
+                await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to Gracebook!\nPlease verify your membership by uploading your QR code in <#${process.env.VERIFY_CHANNEL_ID}>`);
             }
         } catch (welcomeError) {
             console.error('Error sending welcome message:', welcomeError);
