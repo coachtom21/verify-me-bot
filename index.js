@@ -347,17 +347,25 @@ async function fetchQR1BeData(url) {
     }
 }
 
-// Modify the verifySmallStreetMembership function
+// Modify the verifySmallStreetMembership function to add debugging
 async function verifySmallStreetMembership(email) {
     try {
+        console.log(`🔍 Verifying membership for email: ${email}`);
         const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/api');
         const data = await response.json();
         
+        console.log(`🔍 API Response data:`, JSON.stringify(data, null, 2));
+        console.log(`🔍 Total users in API: ${data.length}`);
+        
         for (const user of data) {
+            console.log(`🔍 Checking user: ${user.user_email} (membership: ${user.membership_name})`);
             if (user.user_email.toLowerCase() === email.toLowerCase() && user.membership_id) {
+                console.log(`✅ User found in API! Email: ${user.user_email}, Membership: ${user.membership_name}`);
                 return [true, user.membership_name];
             }
         }
+        
+        console.log(`❌ User not found in API for email: ${email}`);
         return [false, null];
     } catch (error) {
         console.error('Error verifying membership:', error);
@@ -432,8 +440,13 @@ async function insertUserToSmallStreetUsermeta(userData) {
 // Assign role based on membership
 async function assignRoleBasedOnMembership(member, membershipType) {
     try {
+        console.log(`🎭 Starting role assignment for user: ${member.user.tag}`);
+        console.log(`🎭 Membership type: ${membershipType}`);
+        
         const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
         const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
+
+        console.log(`🎭 Role IDs - MEGAVOTER: ${MEGAVOTER_ROLE_ID}, PATRON: ${PATRON_ROLE_ID}`);
 
         // Check if role IDs are set
         if (!MEGAVOTER_ROLE_ID || !PATRON_ROLE_ID) {
@@ -445,6 +458,8 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         const megavoterRole = member.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
         const patronRole = member.guild.roles.cache.get(PATRON_ROLE_ID);
 
+        console.log(`🎭 Roles found - MEGAvoter: ${megavoterRole ? megavoterRole.name : 'NOT FOUND'}, Patron: ${patronRole ? patronRole.name : 'NOT FOUND'}`);
+
         if (!megavoterRole || !patronRole) {
             console.error('❌ One or more roles not found in guild');
             return { roleName: null, alreadyHas: false, error: 'Roles not found in guild' };
@@ -454,30 +469,39 @@ async function assignRoleBasedOnMembership(member, membershipType) {
         const hasMegavoter = member.roles.cache.has(MEGAVOTER_ROLE_ID);
         const hasPatron = member.roles.cache.has(PATRON_ROLE_ID);
 
+        console.log(`🎭 User current roles - MEGAvoter: ${hasMegavoter}, Patron: ${hasPatron}`);
+
         // Return early if user already has the appropriate role
         if (membershipType.toLowerCase() === 'pioneer' && hasMegavoter) {
+            console.log(`✅ User already has MEGAvoter role`);
             return { roleName: "MEGAvoter", alreadyHas: true };
         } else if (membershipType.toLowerCase() === 'patron' && hasPatron) {
+            console.log(`✅ User already has Patron role`);
             return { roleName: "Patron", alreadyHas: true };
         }
 
         // Remove existing roles
         if (hasMegavoter) {
+            console.log(`🔄 Removing existing MEGAvoter role`);
             await member.roles.remove(megavoterRole);
         }
         if (hasPatron) {
+            console.log(`🔄 Removing existing Patron role`);
             await member.roles.remove(patronRole);
         }
 
         // Assign new role
         if (membershipType.toLowerCase() === 'pioneer') {
+            console.log(`🎭 Assigning MEGAvoter role`);
             await member.roles.add(megavoterRole);
             return { roleName: "MEGAvoter", alreadyHas: false };
         } else if (membershipType.toLowerCase() === 'patron') {
+            console.log(`🎭 Assigning Patron role`);
             await member.roles.add(patronRole);
             return { roleName: "Patron", alreadyHas: false };
         }
         
+        console.log(`❌ Unknown membership type: ${membershipType}`);
         return { roleName: null, alreadyHas: false, error: `Unknown membership type: ${membershipType}` };
     } catch (error) {
         console.error('❌ Error assigning role:', error);
@@ -910,6 +934,55 @@ client.on('messageCreate', async (message) => {
             await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n- Bot's highest role: ${botRole.name}\n- Bot can manage roles: ${botMember.permissions.has('ManageRoles') ? '✅ Yes' : '❌ No'}\n- Bot role position: ${botRole.position}\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}`);
         } catch (error) {
             await message.reply(`❌ Role test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle test command for membership verification and role assignment
+    if (message.content === '!testmembership' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 Testing membership verification and role assignment...');
+            
+            // Test with a sample email (you can change this to a real email from your database)
+            const testEmail = 'test@smallstreet.app'; // Change this to a real email
+            
+            console.log('🧪 Testing membership verification...');
+            const [isMember, membershipType] = await verifySmallStreetMembership(testEmail);
+            
+            console.log('🧪 Testing role assignment...');
+            const roleResult = await assignRoleBasedOnMembership(message.member, membershipType || 'pioneer');
+            
+            await message.reply(`🧪 **Membership Test Result:**\n- Email: ${testEmail}\n- Found in API: ${isMember ? '✅ Yes' : '❌ No'}\n- Membership Type: ${membershipType || 'None'}\n- Role Assignment: ${roleResult.roleName || 'Failed'}\n- Error: ${roleResult.error || 'None'}`);
+            
+        } catch (error) {
+            console.error('🧪 Membership test failed:', error);
+            await message.reply(`❌ Test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle test command for specific email verification
+    if (message.content.startsWith('!testemail ') && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const testEmail = message.content.split(' ')[1];
+            if (!testEmail) {
+                await message.reply('❌ Please provide an email address. Usage: `!testemail user@example.com`');
+                return;
+            }
+            
+            await message.reply(`🧪 Testing membership verification for email: ${testEmail}`);
+            
+            console.log('🧪 Testing membership verification for specific email...');
+            const [isMember, membershipType] = await verifySmallStreetMembership(testEmail);
+            
+            console.log('🧪 Testing role assignment...');
+            const roleResult = await assignRoleBasedOnMembership(message.member, membershipType || 'pioneer');
+            
+            await message.reply(`🧪 **Email Test Result:**\n- Email: ${testEmail}\n- Found in API: ${isMember ? '✅ Yes' : '❌ No'}\n- Membership Type: ${membershipType || 'None'}\n- Role Assignment: ${roleResult.roleName || 'Failed'}\n- Error: ${roleResult.error || 'None'}`);
+            
+        } catch (error) {
+            console.error('🧪 Email test failed:', error);
+            await message.reply(`❌ Test failed: ${error.message}`);
         }
         return;
     }
