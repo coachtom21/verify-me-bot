@@ -811,24 +811,6 @@ client.on('guildMemberAdd', async (member) => {
 
 // Handle QR code verification (existing code)
 client.on('messageCreate', async (message) => {
-    // Handle test command for role assignment
-    if (message.content === '!testrole' && message.author.id === process.env.ADMIN_USER_ID) {
-        try {
-            const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
-            const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
-            
-            const patronRole = message.guild.roles.cache.get(PATRON_ROLE_ID);
-            const megavoterRole = message.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
-            
-            const botMember = message.guild.members.cache.get(client.user.id);
-            const botRole = botMember.roles.highest;
-            
-            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n- Bot's highest role: ${botRole.name}\n- Bot can manage roles: ${botMember.permissions.has('ManageRoles') ? '✅ Yes' : '❌ No'}\n- Bot role position: ${botRole.position}\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}`);
-        } catch (error) {
-            await message.reply(`❌ Role test failed: ${error.message}`);
-        }
-        return;
-    }
 
     // Handle test command for database insertion
     if (message.content === '!testdb' && message.author.id === process.env.ADMIN_USER_ID) {
