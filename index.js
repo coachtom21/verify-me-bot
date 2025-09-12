@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const Jimp = require('jimp');
 const QrCode = require('qrcode-reader');
 const express = require('express');
+const cron = require('node-cron');
 
 // Create Express app
 const app = express();
@@ -438,6 +439,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
 }
 
 // Function to create POC Governance Vote poll
+
 async function createPOCGovernancePoll() {
     try {
         const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
@@ -635,12 +637,46 @@ client.once('ready', async () => {
                 await channel.bulkDelete(botMessages).catch(console.error);
             }
             
-            // Send new startup message
-            await channel.send('🤖 Bot is online and ready to process QR codes!\nMake Everyone Great Again');
-        }
-    } catch (error) {
-        console.error('Error during startup cleanup:', error);
+        // Send new startup message
+        await channel.send('🤖 Bot is online and ready to process QR codes!\nMake Everyone Great Again');
     }
+    
+    // Schedule monthly POC Governance polls
+    // This will create a poll on the 1st day of every month at 9:00 AM
+    cron.schedule('0 9 1 * *', async () => {
+        try {
+            console.log('🗳️ Creating scheduled monthly POC Governance poll...');
+            const pollResult = await createPOCGovernancePoll();
+            
+            if (pollResult.success) {
+                console.log(`✅ Monthly poll created successfully: ${pollResult.messageId}`);
+                
+                // Send notification to admin
+                const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                if (adminUser) {
+                    await adminUser.send(`🗳️ **Monthly POC Governance Poll Created!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>`);
+                }
+            } else {
+                console.error('❌ Failed to create monthly poll:', pollResult.error);
+                
+                // Send error notification to admin
+                const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                if (adminUser) {
+                    await adminUser.send(`❌ **Monthly Poll Creation Failed:** ${pollResult.error}`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error in scheduled poll creation:', error);
+        }
+    }, {
+        timezone: "UTC"
+    });
+    
+    console.log('🗳️ Monthly poll scheduler activated - polls will be created on the 1st of each month at 9:00 AM UTC');
+    
+} catch (error) {
+    console.error('Error during startup cleanup:', error);
+}
 });
 
 // Start Express server only once
@@ -1180,6 +1216,11 @@ client.on('messageCreate', async (message) => {
                         inline: false
                     },
                     {
+                        name: '!pollscheduler',
+                        value: 'Check poll scheduler status and next poll date',
+                        inline: false
+                    },
+                    {
                         name: '!pollhelp',
                         value: 'Show this help message',
                         inline: false
@@ -1193,6 +1234,62 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to check poll scheduler status
+    if (message.content === '!pollscheduler' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const now = new Date();
+            const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 9, 0, 0);
+            const nextPollDate = nextMonth.toISOString();
+            const nextPollTimestamp = Math.floor(nextPollDate / 1000);
+            
+            const schedulerEmbed = {
+                title: '🗳️ Poll Scheduler Status',
+                description: 'Information about the automatic poll creation schedule:',
+                color: 0x00ff00,
+                fields: [
+                    {
+                        name: '📅 Schedule',
+                        value: 'Monthly on the 1st at 9:00 AM UTC',
+                        inline: false
+                    },
+                    {
+                        name: '⏰ Next Poll',
+                        value: `<t:${nextPollTimestamp}:F>`,
+                        inline: true
+                    },
+                    {
+                        name: '🕐 Time Until Next',
+                        value: `<t:${nextPollTimestamp}:R>`,
+                        inline: true
+                    },
+                    {
+                        name: '📊 Poll Duration',
+                        value: '7 days',
+                        inline: true
+                    },
+                    {
+                        name: '🎯 Target Channel',
+                        value: `<#${process.env.MONTHLY_REDEMPTION_CHANNEL_ID}>`,
+                        inline: true
+                    },
+                    {
+                        name: '✅ Scheduler Status',
+                        value: 'Active',
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Make Everyone Great Again • SmallStreet Governance'
+                }
+            };
+            
+            await message.reply({ embeds: [schedulerEmbed] });
+        } catch (error) {
+            await message.reply(`❌ Scheduler check failed: ${error.message}`);
         }
         return;
     }
