@@ -437,6 +437,89 @@ async function insertUserToSmallStreetUsermeta(userData) {
     }
 }
 
+// Function to create POC Governance Vote poll
+async function createPOCGovernancePoll() {
+    try {
+        const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+        if (!channel) {
+            console.error('❌ Monthly redemption channel not found');
+            return { success: false, error: 'Channel not found' };
+        }
+
+        // Create poll embed
+        const pollEmbed = {
+            title: '🗳️ POC Governance Vote',
+            description: 'Cast your vote for the monthly POC Governance decision. This poll will run for 7 days.',
+            color: 0x00ff00, // Green color
+            fields: [
+                {
+                    name: '📊 Poll Options',
+                    value: '✅ **Yes** - Vote in favor\n❌ **No** - Vote against\n\nReact with the emoji below to cast your vote:',
+                    inline: false
+                },
+                {
+                    name: '⏰ Duration',
+                    value: '7 days',
+                    inline: true
+                },
+                {
+                    name: '📅 End Date',
+                    value: `<t:${Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000) / 1000)}:F>`,
+                    inline: true
+                }
+            ],
+            footer: {
+                text: 'Make Everyone Great Again • SmallStreet Governance'
+            },
+            timestamp: new Date().toISOString()
+        };
+
+        // Send the poll message
+        const pollMessage = await channel.send({ embeds: [pollEmbed] });
+
+        // Add reaction options for voting (Yes/No only)
+        const reactions = ['✅', '❌'];
+        for (const reaction of reactions) {
+            await pollMessage.react(reaction);
+        }
+
+        console.log(`✅ POC Governance poll created in ${channel.name}`);
+        return { 
+            success: true, 
+            messageId: pollMessage.id,
+            channelId: channel.id,
+            endTime: Date.now() + 7 * 24 * 60 * 60 * 1000
+        };
+
+    } catch (error) {
+        console.error('❌ Error creating POC Governance poll:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Function to get poll results
+async function getPollResults(messageId) {
+    try {
+        const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+        if (!channel) {
+            return { success: false, error: 'Channel not found' };
+        }
+
+        const message = await channel.messages.fetch(messageId);
+        const reactions = message.reactions.cache;
+
+        const results = {};
+        for (const [emoji, reaction] of reactions) {
+            results[emoji] = reaction.count - 1; // Subtract 1 for bot's own reaction
+        }
+
+        return { success: true, results };
+    } catch (error) {
+        console.error('❌ Error getting poll results:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Assign role based on membership
 async function assignRoleBasedOnMembership(member, membershipType) {
     try {
@@ -1005,6 +1088,111 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('🧪 Email test failed:', error);
             await message.reply(`❌ Test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to create POC Governance poll
+    if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🗳️ Creating POC Governance Vote poll...');
+            
+            const pollResult = await createPOCGovernancePoll();
+            
+            if (pollResult.success) {
+                await message.reply(`✅ **Poll Created Successfully!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>`);
+            } else {
+                await message.reply(`❌ **Failed to create poll:** ${pollResult.error}`);
+            }
+        } catch (error) {
+            console.error('❌ Error creating poll:', error);
+            await message.reply(`❌ Poll creation failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to get poll results
+    if (message.content.startsWith('!pollresults ') && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const messageId = message.content.split(' ')[1];
+            if (!messageId) {
+                await message.reply('❌ Please provide a message ID. Usage: `!pollresults <message_id>`');
+                return;
+            }
+            
+            await message.reply('📊 Getting poll results...');
+            
+            const results = await getPollResults(messageId);
+            
+            if (results.success) {
+                let resultText = '📊 **Poll Results:**\n';
+                for (const [emoji, count] of Object.entries(results.results)) {
+                    resultText += `${emoji}: ${count} votes\n`;
+                }
+                await message.reply(resultText);
+            } else {
+                await message.reply(`❌ **Failed to get results:** ${results.error}`);
+            }
+        } catch (error) {
+            console.error('❌ Error getting poll results:', error);
+            await message.reply(`❌ Failed to get results: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to check poll channel
+    if (message.content === '!checkpollchannel' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+            
+            if (channel) {
+                await message.reply(`✅ **Poll Channel Check:**\n- Channel: ${channel.name}\n- ID: \`${channel.id}\`\n- Type: ${channel.type}\n- Bot can send messages: ${channel.permissionsFor(client.user).has('SendMessages') ? '✅ Yes' : '❌ No'}`);
+            } else {
+                await message.reply(`❌ **Poll Channel Not Found:**\n- Channel ID: \`${process.env.MONTHLY_REDEMPTION_CHANNEL_ID}\`\n- Make sure the bot has access to this channel`);
+            }
+        } catch (error) {
+            await message.reply(`❌ Channel check failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle help command for poll functionality
+    if (message.content === '!pollhelp' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const helpEmbed = {
+                title: '🗳️ Poll Management Commands',
+                description: 'Available commands for managing POC Governance polls:',
+                color: 0x00ff00,
+                fields: [
+                    {
+                        name: '!createpoll',
+                        value: 'Create a new POC Governance Vote poll in #monthly-redemption',
+                        inline: false
+                    },
+                    {
+                        name: '!pollresults <message_id>',
+                        value: 'Get results from a specific poll message',
+                        inline: false
+                    },
+                    {
+                        name: '!checkpollchannel',
+                        value: 'Check if the poll channel is accessible',
+                        inline: false
+                    },
+                    {
+                        name: '!pollhelp',
+                        value: 'Show this help message',
+                        inline: false
+                    }
+                ],
+                footer: {
+                    text: 'Make Everyone Great Again • SmallStreet Governance'
+                }
+            };
+            
+            await message.reply({ embeds: [helpEmbed] });
+        } catch (error) {
+            await message.reply(`❌ Help command failed: ${error.message}`);
         }
         return;
     }
