@@ -557,6 +557,9 @@ async function getEnhancedPollResults(messageId) {
         const message = await channel.messages.fetch(messageId);
         const reactions = message.reactions.cache;
         
+        console.log(`🔍 Debug: Processing reactions for message ${messageId}`);
+        console.log(`🔍 Debug: Found ${reactions.size} reactions`);
+        
         const results = {
             peace: { count: 0, weighted: 0, voters: [] },
             voting: { count: 0, weighted: 0, voters: [] },
@@ -567,20 +570,38 @@ async function getEnhancedPollResults(messageId) {
         
         // Process each reaction
         for (const [emoji, reaction] of reactions) {
+            console.log(`🔍 Debug: Processing reaction ${emoji} with ${reaction.count} count`);
+            
             const choice = getChoiceFromEmoji(emoji);
-            if (!choice) continue;
+            if (!choice) {
+                console.log(`🔍 Debug: Skipping emoji ${emoji} - not a valid choice`);
+                continue;
+            }
+            
+            console.log(`🔍 Debug: Emoji ${emoji} maps to choice: ${choice}`);
 
             const users = await reaction.users.fetch();
+            console.log(`🔍 Debug: Found ${users.size} users for reaction ${emoji}`);
             
             for (const user of users.values()) {
-                if (user.bot) continue;
+                console.log(`🔍 Debug: Processing user ${user.username} (${user.id})`);
+                
+                if (user.bot) {
+                    console.log(`🔍 Debug: Skipping bot user ${user.username}`);
+                    continue;
+                }
                 
                 const member = message.guild.members.cache.get(user.id);
-                if (!member) continue;
+                if (!member) {
+                    console.log(`🔍 Debug: Could not find member for user ${user.username}`);
+                    continue;
+                }
 
                 // Get user's XP level (simulate for now - you'll need to integrate with your XP system)
                 const xpLevel = await getUserXPLevel(user.id) || 1000000; // Default to 1M XP
                 const votingPower = getVotingPower(xpLevel);
+                
+                console.log(`🔍 Debug: User ${user.username} - XP: ${xpLevel}, Power: ${votingPower}x, Choice: ${choice}`);
                 
                 const voter = {
                     userId: user.id,
@@ -596,11 +617,18 @@ async function getEnhancedPollResults(messageId) {
                 results[choice].weighted += votingPower;
                 results[choice].voters.push(voter);
                 results.uniqueVoters.add(user.id);
+                
+                console.log(`🔍 Debug: Added voter to ${choice} - Count: ${results[choice].count}, Weighted: ${results[choice].weighted}`);
             }
         }
 
         results.totalVoters = results.uniqueVoters.size;
         results.uniqueVoters = Array.from(results.uniqueVoters);
+        
+        console.log(`🔍 Debug: Final results - Total voters: ${results.totalVoters}`);
+        console.log(`🔍 Debug: Peace: ${results.peace.count} votes, ${results.peace.weighted} weighted`);
+        console.log(`🔍 Debug: Voting: ${results.voting.count} votes, ${results.voting.weighted} weighted`);
+        console.log(`🔍 Debug: Disaster: ${results.disaster.count} votes, ${results.disaster.weighted} weighted`);
 
         return { success: true, data: results };
     } catch (error) {
@@ -1578,7 +1606,19 @@ client.on('messageCreate', async (message) => {
             
             console.log(`🔍 Debug: Found poll message ID: ${messageId}`);
             
+            // Debug: Check reactions on the poll message
             await message.reply(`📊 **Found Poll:** Analyzing participation for message \`${messageId}\`\n*Processing data...*`);
+            
+            // Debug: Show raw reaction data
+            const pollMessage = await message.channel.messages.fetch(messageId);
+            const reactions = pollMessage.reactions.cache;
+            
+            console.log(`🔍 Debug: Poll message reactions:`, reactions.size);
+            for (const [emoji, reaction] of reactions) {
+                console.log(`🔍 Debug: Reaction ${emoji}: ${reaction.count} count`);
+            }
+            
+            await message.reply(`🔍 **Debug Info:**\n- Poll Message ID: \`${messageId}\`\n- Total Reactions: ${reactions.size}\n- Reaction Details: ${Array.from(reactions.entries()).map(([emoji, r]) => `${emoji}: ${r.count}`).join(', ')}`);
             
             // Get enhanced poll results
             const results = await getEnhancedPollResults(messageId);
@@ -1777,6 +1817,55 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle test command to simulate poll votes
+    if (message.content === '!testvotes' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+        try {
+            await message.reply('🧪 **Test Mode:** Simulating votes for testing...');
+            
+            // Find the latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found** to test votes on. Create a poll first with `!createpoll`');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const pollMessage = await message.channel.messages.fetch(latestPoll.id);
+            
+            // Simulate some test votes
+            const testVotes = [
+                { emoji: '🕊️', count: 3 },
+                { emoji: '🗳️', count: 2 },
+                { emoji: '🆘', count: 1 }
+            ];
+            
+            for (const vote of testVotes) {
+                for (let i = 0; i < vote.count; i++) {
+                    try {
+                        await pollMessage.react(vote.emoji);
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between reactions
+                    } catch (error) {
+                        console.log(`Could not add reaction ${vote.emoji}:`, error.message);
+                    }
+                }
+            }
+            
+            await message.reply(`✅ **Test votes added:**\n- 🕊️ Peace: 3 votes\n- 🗳️ Voting: 2 votes\n- 🆘 Disaster: 1 vote\n\nNow run \`!participation\` to see the results!`);
+            
+        } catch (error) {
+            console.error('❌ Error adding test votes:', error);
+            await message.reply(`❌ Test votes failed: ${error.message}`);
         }
         return;
     }
