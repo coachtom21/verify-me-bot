@@ -583,6 +583,11 @@ async function getEnhancedPollResults(messageId) {
             const users = await reaction.users.fetch();
             console.log(`🔍 Debug: Found ${users.size} users for reaction ${emoji}`);
             
+            // Reset counts for this choice to avoid double counting
+            results[choice].count = 0;
+            results[choice].weighted = 0;
+            results[choice].voters = [];
+            
             for (const user of users.values()) {
                 console.log(`🔍 Debug: Processing user ${user.username} (${user.id})`);
                 
@@ -1618,7 +1623,25 @@ client.on('messageCreate', async (message) => {
                 console.log(`🔍 Debug: Reaction ${emoji}: ${reaction.count} count`);
             }
             
-            await message.reply(`🔍 **Debug Info:**\n- Poll Message ID: \`${messageId}\`\n- Total Reactions: ${reactions.size}\n- Reaction Details: ${Array.from(reactions.entries()).map(([emoji, r]) => `${emoji}: ${r.count}`).join(', ')}`);
+            // Debug: Check each reaction individually
+            let detailedReactionInfo = '🔍 **Detailed Reaction Analysis:**\n';
+            for (const [emoji, reaction] of reactions) {
+                try {
+                    const users = await reaction.users.fetch();
+                    detailedReactionInfo += `\n**${emoji} (${reaction.count} total):**\n`;
+                    
+                    for (const user of users.values()) {
+                        const isBot = user.bot ? ' (BOT)' : '';
+                        const member = message.guild.members.cache.get(user.id);
+                        const displayName = member ? member.displayName : 'Unknown Member';
+                        detailedReactionInfo += `• ${user.username}${isBot} (${displayName})\n`;
+                    }
+                } catch (error) {
+                    detailedReactionInfo += `• Error fetching users: ${error.message}\n`;
+                }
+            }
+            
+            await message.reply(`🔍 **Debug Info:**\n- Poll Message ID: \`${messageId}\`\n- Total Reactions: ${reactions.size}\n- Reaction Details: ${Array.from(reactions.entries()).map(([emoji, r]) => `${emoji}: ${r.count}`).join(', ')}\n\n${detailedReactionInfo}`);
             
             // Get enhanced poll results
             const results = await getEnhancedPollResults(messageId);
@@ -1817,6 +1840,59 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle debug command to check reaction details
+    if (message.content === '!checkreactions' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+        try {
+            // Find the latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found** to check reactions on.');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const pollMessage = await message.channel.messages.fetch(latestPoll.id);
+            const reactions = pollMessage.reactions.cache;
+            
+            let reactionDetails = `🔍 **Reaction Check for Poll ${latestPoll.id}:**\n\n`;
+            
+            for (const [emoji, reaction] of reactions) {
+                reactionDetails += `**${emoji} Reaction:**\n`;
+                reactionDetails += `- Count: ${reaction.count}\n`;
+                reactionDetails += `- Users: ${reaction.users.cache.size} cached\n`;
+                
+                try {
+                    const users = await reaction.users.fetch();
+                    reactionDetails += `- Fetched Users: ${users.size}\n`;
+                    
+                    for (const user of users.values()) {
+                        const isBot = user.bot ? ' (BOT)' : '';
+                        const member = message.guild.members.cache.get(user.id);
+                        const displayName = member ? member.displayName : 'Unknown';
+                        reactionDetails += `  • ${user.username}${isBot} (${displayName}) - ID: ${user.id}\n`;
+                    }
+                } catch (error) {
+                    reactionDetails += `- Error fetching users: ${error.message}\n`;
+                }
+                reactionDetails += '\n';
+            }
+            
+            await message.reply(reactionDetails);
+            
+        } catch (error) {
+            console.error('❌ Error checking reactions:', error);
+            await message.reply(`❌ Reaction check failed: ${error.message}`);
         }
         return;
     }
