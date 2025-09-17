@@ -1806,9 +1806,14 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // Handle debug command for poll participation in monthly-redemption channel
-    if (message.content === '!participation' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+    // Handle debug command for poll participation
+    if (message.content === '!participation' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
+            console.log('🔍 Debug: !participation command triggered');
+            console.log('🔍 Debug: Channel ID:', message.channel.id);
+            console.log('🔍 Debug: Admin User ID:', process.env.ADMIN_USER_ID);
+            console.log('🔍 Debug: Message Author ID:', message.author.id);
+            
             await message.reply('🔍 **Debug Mode:** Searching for recent polls in this channel...');
             
             // Fetch recent messages to find poll messages
@@ -1820,8 +1825,24 @@ client.on('messageCreate', async (message) => {
                 msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
             );
             
+            // If no polls found in current channel, try the monthly redemption channel
+            if (pollMessages.size === 0 && process.env.MONTHLY_REDEMPTION_CHANNEL_ID && message.channel.id !== process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+                console.log('🔍 Debug: No polls in current channel, trying monthly redemption channel');
+                const monthlyChannel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+                if (monthlyChannel) {
+                    const monthlyMessages = await monthlyChannel.messages.fetch({ limit: 50 });
+                    pollMessages = monthlyMessages.filter(msg => 
+                        msg.author.id === client.user.id && 
+                        msg.embeds.length > 0 &&
+                        msg.embeds[0].title && 
+                        msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+                    );
+                    console.log(`🔍 Debug: Found ${pollMessages.size} poll messages in monthly redemption channel`);
+                }
+            }
+            
             if (pollMessages.size === 0) {
-                await message.reply('❌ **No poll messages found** in this channel. Create a poll first with `!createpoll`');
+                await message.reply('❌ **No poll messages found.**\n\n**Troubleshooting:**\n1. Check if a poll has been created with `!createpoll`\n2. Verify the bot has permission to read message history\n3. Make sure you\'re in the correct channel');
                 return;
             }
             
