@@ -640,7 +640,7 @@ async function getEnhancedPollResults(messageId) {
 
         const message = await channel.messages.fetch(messageId);
         const reactions = message.reactions.cache;
-        
+
         console.log(`🔍 Debug: Processing reactions for message ${messageId}`);
         console.log(`🔍 Debug: Found ${reactions.size} reactions`);
         
@@ -733,7 +733,7 @@ async function getEnhancedPollResults(messageId) {
                     email: userVerification.exists ? userVerification.userData.email : `${user.username}@discord.local`,
                     vote: choice,
                     vote_type: 'monthly_poll',
-                    user_id: user.id,
+                    discord_id: user.id,
                     username: user.username,
                     display_name: member.displayName,
                     membership: userVerification.exists ? 'verified' : 'unverified',
@@ -777,8 +777,8 @@ async function getPollResults(messageId) {
     results['🕊️'] = data.peace.count;
     results['🗳️'] = data.voting.count;
     results['🆘'] = data.disaster.count;
-    
-    return { success: true, results };
+
+        return { success: true, results };
 }
 
 // Calculate fund allocation based on weighted votes
@@ -2079,7 +2079,7 @@ client.on('messageCreate', async (message) => {
                 email: 'test@example.com',
                 vote: 'peace',
                 vote_type: 'monthly_poll',
-                user_id: '123456789',
+                discord_id: '123456789',
                 username: 'testuser',
                 display_name: 'Test User',
                 membership: 'verified',
