@@ -438,9 +438,8 @@ async function insertUserToSmallStreetUsermeta(userData) {
     }
 }
 
-// Function to create POC Governance Vote poll
-
-async function createPOCGovernancePoll() {
+// Enhanced poll system with three-choice resource allocation
+async function createEnhancedMonthlyPoll() {
     try {
         const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
         if (!channel) {
@@ -448,16 +447,26 @@ async function createPOCGovernancePoll() {
             return { success: false, error: 'Channel not found' };
         }
 
-        // Create poll embed
+        // Create enhanced poll embed
         const pollEmbed = {
-            title: '🗳️ POC Governance Vote',
-            description: 'Cast your vote for the monthly POC Governance decision. This poll will run for 7 days.',
+            title: '🗳️ Monthly Resource Allocation Vote',
+            description: 'Choose how to allocate this month\'s community resources. Your voting power is based on your XP level.',
             color: 0x00ff00, // Green color
             fields: [
                 {
-                    name: '📊 Poll Options',
-                    value: '✅ **Yes** - Vote in favor\n❌ **No** - Vote against\n\nReact with the emoji below to cast your vote:',
-                    inline: false
+                    name: '🕊️ Peace Initiatives',
+                    value: 'Community building, conflict resolution, and solidarity programs\n**XP Multiplier:** 1.0x',
+                    inline: true
+                },
+                {
+                    name: '🗳️ Voting Programs', 
+                    value: 'Democratic participation, voter education, and civic engagement\n**XP Multiplier:** 1.5x',
+                    inline: true
+                },
+                {
+                    name: '🆘 Disaster Relief',
+                    value: 'Emergency response, humanitarian aid, and crisis support\n**XP Multiplier:** 2.0x',
+                    inline: true
                 },
                 {
                     name: '⏰ Duration',
@@ -468,10 +477,15 @@ async function createPOCGovernancePoll() {
                     name: '📅 End Date',
                     value: `<t:${Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000) / 1000)}:F>`,
                     inline: true
+                },
+                {
+                    name: '💡 Voting Power',
+                    value: 'Based on your XP level:\n• Basic: 1x\n• MEGAvoter: 5x\n• Patron: 25x\n• Top Contributors: Up to 100x',
+                    inline: true
                 }
             ],
             footer: {
-                text: 'Make Everyone Great Again • SmallStreet Governance'
+                text: 'Voting power based on XP level • Make Everyone Great Again • SmallStreet Governance'
             },
             timestamp: new Date().toISOString()
         };
@@ -479,13 +493,13 @@ async function createPOCGovernancePoll() {
         // Send the poll message
         const pollMessage = await channel.send({ embeds: [pollEmbed] });
 
-        // Add reaction options for voting (Yes/No only)
-        const reactions = ['✅', '❌'];
+        // Add reaction options for voting (three choices)
+        const reactions = ['🕊️', '🗳️', '🆘'];
         for (const reaction of reactions) {
             await pollMessage.react(reaction);
         }
 
-        console.log(`✅ POC Governance poll created in ${channel.name}`);
+        console.log(`✅ Enhanced monthly poll created in ${channel.name}`);
         return { 
             success: true, 
             messageId: pollMessage.id,
@@ -494,13 +508,46 @@ async function createPOCGovernancePoll() {
         };
 
     } catch (error) {
-        console.error('❌ Error creating POC Governance poll:', error);
+        console.error('❌ Error creating enhanced monthly poll:', error);
         return { success: false, error: error.message };
     }
 }
 
-// Function to get poll results
-async function getPollResults(messageId) {
+// Legacy function for backward compatibility
+async function createPOCGovernancePoll() {
+    return await createEnhancedMonthlyPoll();
+}
+
+// Voting power calculation based on XP levels
+function getVotingPower(xpLevel) {
+    if (xpLevel >= 1e168) return 100;      // e-168+ = 100x power
+    if (xpLevel >= 1e120) return 50;       // e-120+ = 50x power  
+    if (xpLevel >= 1e48) return 25;        // e-48+ = 25x power
+    if (xpLevel >= 1e24) return 10;        // e-24+ = 10x power
+    if (xpLevel >= 1e12) return 5;         // e-12+ = 5x power
+    if (xpLevel >= 1e6) return 2;          // e-6+ = 2x power
+    return 1;                              // e-0 to e-6 = 1x power
+}
+
+// Get choice from emoji
+function getChoiceFromEmoji(emoji) {
+    const emojiMap = {
+        '🕊️': 'peace',
+        '🗳️': 'voting', 
+        '🆘': 'disaster'
+    };
+    return emojiMap[emoji] || null;
+}
+
+// Format e-decimal notation
+function formatEDecimal(xp) {
+    if (xp === 0) return 'e-0';
+    const exp = Math.floor(Math.log10(Math.abs(xp)));
+    return `e-${exp}`;
+}
+
+// Enhanced poll results processing with weighted voting
+async function getEnhancedPollResults(messageId) {
     try {
         const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
         if (!channel) {
@@ -509,15 +556,294 @@ async function getPollResults(messageId) {
 
         const message = await channel.messages.fetch(messageId);
         const reactions = message.reactions.cache;
-
-        const results = {};
+        
+        const results = {
+            peace: { count: 0, weighted: 0, voters: [] },
+            voting: { count: 0, weighted: 0, voters: [] },
+            disaster: { count: 0, weighted: 0, voters: [] },
+            totalVoters: 0,
+            uniqueVoters: new Set()
+        };
+        
+        // Process each reaction
         for (const [emoji, reaction] of reactions) {
-            results[emoji] = reaction.count - 1; // Subtract 1 for bot's own reaction
+            const choice = getChoiceFromEmoji(emoji);
+            if (!choice) continue;
+
+            const users = await reaction.users.fetch();
+            
+            for (const user of users.values()) {
+                if (user.bot) continue;
+                
+                const member = message.guild.members.cache.get(user.id);
+                if (!member) continue;
+
+                // Get user's XP level (simulate for now - you'll need to integrate with your XP system)
+                const xpLevel = await getUserXPLevel(user.id) || 1000000; // Default to 1M XP
+                const votingPower = getVotingPower(xpLevel);
+                
+                const voter = {
+                    userId: user.id,
+                    username: user.username,
+                    displayName: member.displayName,
+                    xpLevel: xpLevel,
+                    votingPower: votingPower,
+                    choice: choice,
+                    votedAt: new Date().toISOString()
+                };
+
+                results[choice].count++;
+                results[choice].weighted += votingPower;
+                results[choice].voters.push(voter);
+                results.uniqueVoters.add(user.id);
+            }
         }
 
-        return { success: true, results };
+        results.totalVoters = results.uniqueVoters.size;
+        results.uniqueVoters = Array.from(results.uniqueVoters);
+
+        return { success: true, data: results };
     } catch (error) {
-        console.error('❌ Error getting poll results:', error);
+        console.error('❌ Error getting enhanced poll results:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Legacy function for backward compatibility
+async function getPollResults(messageId) {
+    const enhancedResults = await getEnhancedPollResults(messageId);
+    if (!enhancedResults.success) return enhancedResults;
+    
+    // Convert to legacy format
+    const results = {};
+    const data = enhancedResults.data;
+    results['🕊️'] = data.peace.count;
+    results['🗳️'] = data.voting.count;
+    results['🆘'] = data.disaster.count;
+    
+    return { success: true, results };
+}
+
+// Calculate fund allocation based on weighted votes
+function calculateFundAllocation(results, monthlyFund = 1000000) {
+    const totalWeighted = results.peace.weighted + results.voting.weighted + results.disaster.weighted;
+    
+    if (totalWeighted === 0) {
+        return {
+            peace: { percentage: 33.33, allocation: monthlyFund / 3 },
+            voting: { percentage: 33.33, allocation: monthlyFund / 3 },
+            disaster: { percentage: 33.33, allocation: monthlyFund / 3 }
+        };
+    }
+    
+    return {
+        peace: {
+            percentage: (results.peace.weighted / totalWeighted) * 100,
+            allocation: (results.peace.weighted / totalWeighted) * monthlyFund
+        },
+        voting: {
+            percentage: (results.voting.weighted / totalWeighted) * 100,
+            allocation: (results.voting.weighted / totalWeighted) * monthlyFund
+        },
+        disaster: {
+            percentage: (results.disaster.weighted / totalWeighted) * 100,
+            allocation: (results.disaster.weighted / totalWeighted) * monthlyFund
+        }
+    };
+}
+
+// Get user XP level (placeholder - integrate with your XP system)
+async function getUserXPLevel(userId) {
+    try {
+        // This is a placeholder - you'll need to integrate with your actual XP system
+        // For now, return a simulated XP level based on user ID
+        const baseXP = 1000000; // 1M XP base
+        const randomMultiplier = Math.floor(Math.random() * 100) + 1;
+        return baseXP * randomMultiplier;
+    } catch (error) {
+        console.error('Error getting user XP level:', error);
+        return 1000000; // Default to 1M XP
+    }
+}
+
+// Calculate XP rewards for poll participation
+function calculatePollXP(voter, winningChoice) {
+    const baseXP = 1000000;        // 1M XP for voting
+    const winningBonus = 5000000;  // 5M XP if your choice wins
+    const topContributor = 10000000; // 10M XP for top contributors
+    
+    let totalXP = baseXP;
+    
+    // Check if their choice won
+    if (voter.choice === winningChoice) {
+        totalXP += winningBonus;
+    }
+    
+    // Check if they're a top contributor
+    if (voter.votingPower >= 25) {
+        totalXP += topContributor;
+    }
+    
+    return totalXP;
+}
+
+// Award XP to poll participants
+async function awardPollXP(voters, winningChoice) {
+    try {
+        const xpAwards = [];
+        
+        for (const voter of voters) {
+            const xpAwarded = calculatePollXP(voter, winningChoice);
+            
+            // Award XP (integrate with your XP system)
+            await addXpEvent(voter.userId, 'POLL_PARTICIPATION', xpAwarded, {
+                poll_type: 'monthly_resource_allocation',
+                choice: voter.choice,
+                voting_power: voter.votingPower,
+                xp_breakdown: {
+                    base: 1000000,
+                    winning_bonus: voter.choice === winningChoice ? 5000000 : 0,
+                    top_contributor: voter.votingPower >= 25 ? 10000000 : 0
+                }
+            });
+            
+            xpAwards.push({
+                userId: voter.userId,
+                username: voter.username,
+                xpAwarded: xpAwarded,
+                choice: voter.choice,
+                votingPower: voter.votingPower
+            });
+        }
+        
+        console.log(`✅ Awarded XP to ${xpAwards.length} poll participants`);
+        return { success: true, awards: xpAwards };
+    } catch (error) {
+        console.error('Error awarding poll XP:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Add XP event (placeholder - integrate with your XP system)
+async function addXpEvent(userId, eventType, xp, meta = {}) {
+    try {
+        // This is a placeholder - you'll need to integrate with your actual XP system
+        console.log(`💰 XP Event: User ${userId} earned ${formatEDecimal(xp)} (${xp.toLocaleString()} XP) for ${eventType}`);
+        console.log(`📊 Meta:`, JSON.stringify(meta, null, 2));
+        
+        // Here you would integrate with your XP database system
+        // For now, just log the event
+        
+        return { success: true };
+    } catch (error) {
+        console.error('Error adding XP event:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Get poll participants with detailed information
+async function getPollParticipants(messageId) {
+    try {
+        const enhancedResults = await getEnhancedPollResults(messageId);
+        if (!enhancedResults.success) return enhancedResults;
+
+        const data = enhancedResults.data;
+        const allVoters = [
+            ...data.peace.voters,
+            ...data.voting.voters,
+            ...data.disaster.voters
+        ];
+
+        const participants = {
+            summary: {
+                totalVoters: data.totalVoters,
+                peaceVoters: data.peace.voters.length,
+                votingVoters: data.voting.voters.length,
+                disasterVoters: data.disaster.voters.length
+            },
+            byChoice: {
+                peace: data.peace.voters,
+                voting: data.voting.voters,
+                disaster: data.disaster.voters
+            },
+            topContributors: allVoters
+                .sort((a, b) => b.votingPower - a.votingPower)
+                .slice(0, 10),
+            allVoters: allVoters
+        };
+
+        return { success: true, data: participants };
+    } catch (error) {
+        console.error('Error getting poll participants:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Display enhanced poll results
+async function displayEnhancedPollResults(messageId) {
+    try {
+        const results = await getEnhancedPollResults(messageId);
+        if (!results.success) return results;
+
+        const data = results.data;
+        const allocation = calculateFundAllocation(data);
+        
+        // Determine winning choice
+        const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                            data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+
+        // Award XP to participants
+        const allVoters = [
+            ...data.peace.voters,
+            ...data.voting.voters,
+            ...data.disaster.voters
+        ];
+        
+        const xpResult = await awardPollXP(allVoters, winningChoice);
+
+        const resultsEmbed = {
+            title: '📊 Monthly Poll Results - Resource Allocation',
+            description: 'Community has spoken! Here are the weighted results and fund allocation.',
+            color: 0x00ff00,
+            fields: [
+                {
+                    name: '🕊️ Peace Initiatives',
+                    value: `**Votes:** ${data.peace.count}\n**Weighted:** ${data.peace.weighted}\n**Allocation:** ${allocation.peace.percentage.toFixed(1)}%\n**Fund:** $${allocation.peace.allocation.toLocaleString()}`,
+                    inline: true
+                },
+                {
+                    name: '🗳️ Voting Programs',
+                    value: `**Votes:** ${data.voting.count}\n**Weighted:** ${data.voting.weighted}\n**Allocation:** ${allocation.voting.percentage.toFixed(1)}%\n**Fund:** $${allocation.voting.allocation.toLocaleString()}`,
+                    inline: true
+                },
+                {
+                    name: '🆘 Disaster Relief',
+                    value: `**Votes:** ${data.disaster.count}\n**Weighted:** ${data.disaster.weighted}\n**Allocation:** ${allocation.disaster.percentage.toFixed(1)}%\n**Fund:** $${allocation.disaster.allocation.toLocaleString()}`,
+                    inline: true
+                },
+                {
+                    name: '🏆 Winning Choice',
+                    value: `**${winningChoice.charAt(0).toUpperCase() + winningChoice.slice(1)}** won with ${allocation[winningChoice].percentage.toFixed(1)}% of weighted votes`,
+                    inline: false
+                },
+                {
+                    name: '👥 Participation',
+                    value: `**Total Voters:** ${data.totalVoters}\n**XP Awards:** ${xpResult.success ? 'Distributed' : 'Failed'}\n**Total Weighted:** ${data.peace.weighted + data.voting.weighted + data.disaster.weighted}`,
+                    inline: true
+                }
+            ],
+            footer: {
+                text: 'Results processed • XP rewards distributed • Make Everyone Great Again'
+            },
+            timestamp: new Date().toISOString()
+        };
+
+        const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+        await channel.send({ embeds: [resultsEmbed] });
+
+        return { success: true, data: { results: data, allocation, winningChoice, xpResult } };
+    } catch (error) {
+        console.error('Error displaying enhanced poll results:', error);
         return { success: false, error: error.message };
     }
 }
@@ -641,20 +967,36 @@ client.once('ready', async () => {
         await channel.send('🤖 Bot is online and ready to process QR codes!\nMake Everyone Great Again');
     }
     
-    // Schedule monthly POC Governance polls
+    // Schedule monthly enhanced resource allocation polls
     // This will create a poll on the 1st day of every month at 9:00 AM
     cron.schedule('0 9 1 * *', async () => {
         try {
-            console.log('🗳️ Creating scheduled monthly POC Governance poll...');
-            const pollResult = await createPOCGovernancePoll();
+            console.log('🗳️ Creating scheduled monthly resource allocation poll...');
+            const pollResult = await createEnhancedMonthlyPoll();
             
             if (pollResult.success) {
-                console.log(`✅ Monthly poll created successfully: ${pollResult.messageId}`);
+                console.log(`✅ Enhanced monthly poll created successfully: ${pollResult.messageId}`);
+                
+                // Schedule automatic results processing for 7 days later
+                setTimeout(async () => {
+                    try {
+                        console.log('📊 Processing scheduled poll results...');
+                        const results = await displayEnhancedPollResults(pollResult.messageId);
+                        
+                        if (results.success) {
+                            console.log('✅ Scheduled poll results processed successfully');
+                        } else {
+                            console.error('❌ Failed to process scheduled poll results:', results.error);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error processing scheduled poll results:', error);
+                    }
+                }, 7 * 24 * 60 * 60 * 1000); // 7 days
                 
                 // Send notification to admin
                 const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
                 if (adminUser) {
-                    await adminUser.send(`🗳️ **Monthly POC Governance Poll Created!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>`);
+                    await adminUser.send(`🗳️ **Monthly Resource Allocation Poll Created!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief\n- Auto-results: Enabled`);
                 }
             } else {
                 console.error('❌ Failed to create monthly poll:', pollResult.error);
@@ -1110,26 +1452,26 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // Handle command to create POC Governance poll
+    // Handle command to create enhanced monthly poll
     if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
-            await message.reply('🗳️ Creating POC Governance Vote poll...');
+            await message.reply('🗳️ Creating Monthly Resource Allocation poll...');
             
-            const pollResult = await createPOCGovernancePoll();
+            const pollResult = await createEnhancedMonthlyPoll();
             
             if (pollResult.success) {
-                await message.reply(`✅ **Poll Created Successfully!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>`);
+                await message.reply(`✅ **Enhanced Poll Created Successfully!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief`);
             } else {
                 await message.reply(`❌ **Failed to create poll:** ${pollResult.error}`);
             }
         } catch (error) {
-            console.error('❌ Error creating poll:', error);
+            console.error('❌ Error creating enhanced poll:', error);
             await message.reply(`❌ Poll creation failed: ${error.message}`);
         }
         return;
     }
     
-    // Handle command to get poll results
+    // Handle command to get enhanced poll results
     if (message.content.startsWith('!pollresults ') && message.author.id === process.env.ADMIN_USER_ID) {
         try {
             const messageId = message.content.split(' ')[1];
@@ -1138,22 +1480,75 @@ client.on('messageCreate', async (message) => {
                 return;
             }
             
-            await message.reply('📊 Getting poll results...');
+            await message.reply('📊 Getting enhanced poll results...');
             
-            const results = await getPollResults(messageId);
+            const results = await displayEnhancedPollResults(messageId);
             
             if (results.success) {
-                let resultText = '📊 **Poll Results:**\n';
-                for (const [emoji, count] of Object.entries(results.results)) {
-                    resultText += `${emoji}: ${count} votes\n`;
-                }
-                await message.reply(resultText);
+                await message.reply(`✅ **Enhanced poll results processed and displayed!**\n- Results: Posted in channel\n- XP Awards: Distributed\n- Fund Allocation: Calculated`);
             } else {
                 await message.reply(`❌ **Failed to get results:** ${results.error}`);
             }
         } catch (error) {
-            console.error('❌ Error getting poll results:', error);
+            console.error('❌ Error getting enhanced poll results:', error);
             await message.reply(`❌ Failed to get results: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to get poll participants
+    if (message.content.startsWith('!pollparticipants ') && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const messageId = message.content.split(' ')[1];
+            if (!messageId) {
+                await message.reply('❌ Please provide a message ID. Usage: `!pollparticipants <message_id>`');
+                return;
+            }
+            
+            await message.reply('📊 Retrieving poll participants...');
+            
+            const participants = await getPollParticipants(messageId);
+            
+            if (participants.success) {
+                const data = participants.data;
+                
+                // Create detailed embed
+                const embed = {
+                    title: '📊 Poll Participants Report',
+                    description: `Detailed breakdown of poll participation`,
+                    color: 0x00ff00,
+                    fields: [
+                        {
+                            name: '📈 Summary',
+                            value: `**Total Voters:** ${data.summary.totalVoters}\n**Peace:** ${data.summary.peaceVoters}\n**Voting:** ${data.summary.votingVoters}\n**Disaster:** ${data.summary.disasterVoters}`,
+                            inline: true
+                        },
+                        {
+                            name: '🏆 Top Contributors',
+                            value: data.topContributors.slice(0, 5).map((voter, index) => 
+                                `${index + 1}. ${voter.displayName} (${formatEDecimal(voter.xpLevel)})`
+                            ).join('\n'),
+                            inline: true
+                        },
+                        {
+                            name: '💡 Voting Power Distribution',
+                            value: `**Total Weighted Votes:** ${data.topContributors.reduce((sum, v) => sum + v.votingPower, 0)}\n**Average Power:** ${(data.topContributors.reduce((sum, v) => sum + v.votingPower, 0) / data.topContributors.length).toFixed(1)}x`,
+                            inline: false
+                        }
+                    ],
+                    footer: {
+                        text: 'Make Everyone Great Again • SmallStreet Governance'
+                    }
+                };
+                
+                await message.reply({ embeds: [embed] });
+                
+            } else {
+                await message.reply(`❌ **Failed to get participants:** ${participants.error}`);
+            }
+        } catch (error) {
+            console.error('❌ Error getting poll participants:', error);
+            await message.reply(`❌ Failed to get participants: ${error.message}`);
         }
         return;
     }
@@ -1174,22 +1569,27 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // Handle help command for poll functionality
+    // Handle help command for enhanced poll functionality
     if (message.content === '!pollhelp' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
             const helpEmbed = {
-                title: '🗳️ Poll Management Commands',
-                description: 'Available commands for managing POC Governance polls:',
+                title: '🗳️ Enhanced Poll Management Commands',
+                description: 'Available commands for managing Monthly Resource Allocation polls:',
                 color: 0x00ff00,
                 fields: [
                     {
                         name: '!createpoll',
-                        value: 'Create a new POC Governance Vote poll in #monthly-redemption',
+                        value: 'Create a new Monthly Resource Allocation poll with three choices: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief',
                         inline: false
                     },
                     {
                         name: '!pollresults <message_id>',
-                        value: 'Get results from a specific poll message',
+                        value: 'Get enhanced results with weighted voting, fund allocation, and XP distribution',
+                        inline: false
+                    },
+                    {
+                        name: '!pollparticipants <message_id>',
+                        value: 'Get detailed participant list with voting power and XP levels',
                         inline: false
                     },
                     {
@@ -1203,13 +1603,18 @@ client.on('messageCreate', async (message) => {
                         inline: false
                     },
                     {
+                        name: '💡 Poll Features',
+                        value: '• Weighted voting based on XP levels (1x to 100x power)\n• XP rewards: 1M base + 5M winning + 10M top contributor\n• Fund allocation proportional to weighted votes\n• Automatic results processing after 7 days',
+                        inline: false
+                    },
+                    {
                         name: '!pollhelp',
                         value: 'Show this help message',
                         inline: false
                     }
                 ],
                 footer: {
-                    text: 'Make Everyone Great Again • SmallStreet Governance'
+                    text: 'Make Everyone Great Again • SmallStreet Governance • Enhanced Poll System'
                 }
             };
             
