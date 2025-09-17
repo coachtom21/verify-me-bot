@@ -1861,12 +1861,9 @@ client.on('messageCreate', async (message) => {
     // Handle debug command for poll participation
     if (message.content === '!participation' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
-            console.log('🔍 Debug: !participation command triggered');
-            console.log('🔍 Debug: Channel ID:', message.channel.id);
-            console.log('🔍 Debug: Admin User ID:', process.env.ADMIN_USER_ID);
-            console.log('🔍 Debug: Message Author ID:', message.author.id);
+            console.log('🔍 !participation command triggered');
             
-            await message.reply('🔍 **Debug Mode:** Searching for recent polls in this channel...');
+            await message.reply('🔍 **Searching for recent polls...**');
             
             // Fetch recent messages to find poll messages
             const messages = await message.channel.messages.fetch({ limit: 50 });
@@ -1879,7 +1876,7 @@ client.on('messageCreate', async (message) => {
             
             // If no polls found in current channel, try the monthly redemption channel
             if (pollMessages.size === 0 && process.env.MONTHLY_REDEMPTION_CHANNEL_ID && message.channel.id !== process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
-                console.log('🔍 Debug: No polls in current channel, trying monthly redemption channel');
+                console.log('🔍 No polls in current channel, trying monthly redemption channel');
                 const monthlyChannel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
                 if (monthlyChannel) {
                     const monthlyMessages = await monthlyChannel.messages.fetch({ limit: 50 });
@@ -1889,7 +1886,7 @@ client.on('messageCreate', async (message) => {
                         msg.embeds[0].title && 
                         msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
                     );
-                    console.log(`🔍 Debug: Found ${pollMessages.size} poll messages in monthly redemption channel`);
+                    console.log(`🔍 Found ${pollMessages.size} poll messages in monthly redemption channel`);
                 }
             }
             
@@ -1902,39 +1899,9 @@ client.on('messageCreate', async (message) => {
             const latestPoll = pollMessages.first();
             const messageId = latestPoll.id;
             
-            console.log(`🔍 Debug: Found poll message ID: ${messageId}`);
+            console.log(`🔍 Found poll message ID: ${messageId}`);
             
-            // Debug: Check reactions on the poll message
             await message.reply(`📊 **Found Poll:** Analyzing participation for message \`${messageId}\`\n*Processing data...*`);
-            
-            // Debug: Show raw reaction data
-            const pollMessage = await message.channel.messages.fetch(messageId);
-            const reactions = pollMessage.reactions.cache;
-            
-            console.log(`🔍 Debug: Poll message reactions:`, reactions.size);
-            for (const [emoji, reaction] of reactions) {
-                console.log(`🔍 Debug: Reaction ${emoji}: ${reaction.count} count`);
-            }
-            
-            // Debug: Check each reaction individually
-            let detailedReactionInfo = '🔍 **Detailed Reaction Analysis:**\n';
-            for (const [emoji, reaction] of reactions) {
-                try {
-                    const users = await reaction.users.fetch();
-                    detailedReactionInfo += `\n**${emoji} (${reaction.count} total):**\n`;
-                    
-                    for (const user of users.values()) {
-                        const isBot = user.bot ? ' (BOT)' : '';
-                        const member = message.guild.members.cache.get(user.id);
-                        const displayName = member ? member.displayName : 'Unknown Member';
-                        detailedReactionInfo += `• ${user.username}${isBot} (${displayName})\n`;
-                    }
-                } catch (error) {
-                    detailedReactionInfo += `• Error fetching users: ${error.message}\n`;
-                }
-            }
-            
-            await message.reply(`🔍 **Debug Info:**\n- Poll Message ID: \`${messageId}\`\n- Total Reactions: ${reactions.size}\n- Reaction Details: ${Array.from(reactions.entries()).map(([emoji, r]) => `${emoji}: ${r.count}`).join(', ')}\n\n${detailedReactionInfo}`);
             
             // Get enhanced poll results
             const results = await getEnhancedPollResults(messageId);
@@ -1957,94 +1924,61 @@ client.on('messageCreate', async (message) => {
             const participationWinningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
                                 data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
             
-            console.log(`🔍 Debug: Winning choice for XP calculation: ${participationWinningChoice}`);
+            console.log(`🔍 Winning choice for XP calculation: ${participationWinningChoice}`);
             
             // Award XP to all participants
             const xpResult = await awardPollXP(participationVoters, participationWinningChoice, messageId);
-            console.log(`🔍 Debug: XP award result:`, xpResult);
+            console.log(`🔍 XP award result:`, xpResult);
             
-            // Create comprehensive debug embed
-            const debugEmbed = {
-                title: '🔍 **Poll Participation Debug Report**',
-                description: `**Poll Message ID:** \`${messageId}\`\n**Analysis Time:** ${new Date().toISOString()}`,
-                color: 0x0099ff,
+            // Determine the winning choice
+            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            const winningEmoji = winningChoice === 'peace' ? '🕊️' : winningChoice === 'voting' ? '🗳️' : '🆘';
+            const winningName = winningChoice === 'peace' ? 'Peace Initiatives' : winningChoice === 'voting' ? 'Voting Programs' : 'Disaster Relief';
+            
+            // Get top contributor
+            const allVoters = data.peace.voters.concat(data.voting.voters, data.disaster.voters);
+            const topContributor = allVoters.sort((a, b) => b.votingPower - a.votingPower)[0];
+            
+            // Create clean results embed
+            const resultsEmbed = {
+                title: '🏆 **Poll Results**',
+                description: `**Poll Message ID:** \`${messageId}\`\n**Analysis Time:** ${new Date().toLocaleString()}`,
+                color: winningChoice === 'peace' ? 0x00ff00 : winningChoice === 'voting' ? 0x0099ff : 0xff0000,
                 fields: [
                     {
-                        name: '📊 **Vote Counts**',
-                        value: `🕊️ **Peace:** ${data.peace.count} votes\n🗳️ **Voting:** ${data.voting.count} votes\n🆘 **Disaster:** ${data.disaster.count} votes\n\n**Total Voters:** ${data.totalVoters}`,
-                        inline: true
-                    },
-                    {
-                        name: '⚖️ **Weighted Votes**',
-                        value: `🕊️ **Peace:** ${data.peace.weighted} weighted\n🗳️ **Voting:** ${data.voting.weighted} weighted\n🆘 **Disaster:** ${data.disaster.weighted} weighted\n\n**Total Weighted:** ${data.peace.weighted + data.voting.weighted + data.disaster.weighted}`,
-                        inline: true
-                    },
-                    {
-                        name: '🏆 **Top Contributors**',
-                        value: data.peace.voters.concat(data.voting.voters, data.disaster.voters)
-                            .sort((a, b) => b.votingPower - a.votingPower)
-                            .slice(0, 5)
-                            .map((voter, index) => 
-                                `${index + 1}. **${voter.displayName}**\n   • Choice: ${voter.choice}\n   • XP: ${formatEDecimal(voter.xpLevel)}\n   • Power: ${voter.votingPower}x\n   • Verified: ${voter.verified ? '✅ Yes' : '❌ No'}`
-                            ).join('\n\n') || 'No participants found',
+                        name: '🎯 **WINNING VOTE**',
+                        value: `${winningEmoji} **${winningName}**\n\n**Weighted Votes:** ${data[winningChoice].weighted}\n**Raw Votes:** ${data[winningChoice].count}\n**Percentage:** ${((data[winningChoice].weighted / (data.peace.weighted + data.voting.weighted + data.disaster.weighted)) * 100).toFixed(1)}%`,
                         inline: false
                     },
                     {
-                        name: '💰 **XP Distribution**',
-                        value: xpResult.success ? 
-                            `✅ **XP Awarded Successfully!**\n\n**Winning Choice:** ${participationWinningChoice}\n**Participants:** ${participationVoters.length}\n**Total XP Awards:** ${xpResult.awards ? xpResult.awards.length : 0}\n\n**XP Breakdown:**\n• Base: 1M XP (everyone)\n• Winning: +5M XP (winners)\n• Top Contributor: +10M XP (high power)` :
-                            `❌ **XP Award Failed:** ${xpResult.error}`,
+                        name: '👑 **TOP CONTRIBUTOR**',
+                        value: topContributor ? 
+                            `**${topContributor.displayName}**\n\n**Choice:** ${topContributor.choice}\n**XP Level:** ${formatEDecimal(topContributor.xpLevel)}\n**Voting Power:** ${topContributor.votingPower}x\n**Verified:** ${topContributor.verified ? '✅ Yes' : '❌ No'}` :
+                            'No participants found',
+                        inline: false
+                    },
+                    {
+                        name: '📊 **Vote Summary**',
+                        value: `🕊️ **Peace:** ${data.peace.count} votes (${data.peace.weighted} weighted)\n🗳️ **Voting:** ${data.voting.count} votes (${data.voting.weighted} weighted)\n🆘 **Disaster:** ${data.disaster.count} votes (${data.disaster.weighted} weighted)\n\n**Total Participants:** ${data.totalVoters}`,
                         inline: false
                     }
                 ],
                 footer: {
-                    text: 'Debug Mode • Make Everyone Great Again • SmallStreet Governance'
+                    text: 'Make Everyone Great Again • SmallStreet Governance'
                 },
                 timestamp: new Date().toISOString()
             };
             
-            await message.reply({ embeds: [debugEmbed] });
-            
-            // Create detailed participant list
-            const allVoters = [
-                ...data.peace.voters,
-                ...data.voting.voters,
-                ...data.disaster.voters
-            ];
-            
-            if (allVoters.length > 0) {
-                let participantList = '📋 **Complete Participant List:**\n\n';
-                
-                // Group by choice with verification status
-                const peaceVoters = data.peace.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
-                const votingVoters = data.voting.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
-                const disasterVoters = data.disaster.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
-                
-                participantList += `🕊️ **Peace Initiatives (${data.peace.voters.length}):**\n${peaceVoters.join('\n') || 'None'}\n\n`;
-                participantList += `🗳️ **Voting Programs (${data.voting.voters.length}):**\n${votingVoters.join('\n') || 'None'}\n\n`;
-                participantList += `🆘 **Disaster Relief (${data.disaster.voters.length}):**\n${disasterVoters.join('\n') || 'None'}`;
-                
-                // Split into chunks if too long
-                if (participantList.length > 2000) {
-                    const chunks = participantList.match(/[\s\S]{1,2000}/g) || [];
-                    for (let i = 0; i < chunks.length; i++) {
-                        await message.reply(`**Participant List (Part ${i + 1}/${chunks.length}):**\n\`\`\`\n${chunks[i]}\n\`\`\``);
-                    }
-                } else {
-                    await message.reply(`\`\`\`\n${participantList}\n\`\`\``);
-                }
-            } else {
-                await message.reply('❌ **No participants found** in this poll.');
-            }
+            await message.reply({ embeds: [resultsEmbed] });
             
             // Calculate and show fund allocation
             const allocation = calculateFundAllocation(data);
-            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
-                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
             
             const allocationEmbed = {
-                title: '💰 **Fund Allocation Preview**',
-                description: 'How community resources would be distributed based on current votes:',
+                title: '💰 **Fund Allocation**',
+                description: 'Community resources distribution based on current votes:',
                 color: 0x00ff00,
                 fields: [
                     {
@@ -2061,25 +1995,20 @@ client.on('messageCreate', async (message) => {
                         name: '🆘 **Disaster Relief**',
                         value: `**Allocation:** ${allocation.disaster.percentage.toFixed(1)}%\n**Fund:** $${allocation.disaster.allocation.toLocaleString()}`,
                         inline: true
-                    },
-                    {
-                        name: '🏆 **Current Winner**',
-                        value: `**${winningChoice.charAt(0).toUpperCase() + winningChoice.slice(1)}** is leading with ${allocation[winningChoice].percentage.toFixed(1)}% of weighted votes`,
-                        inline: false
                     }
                 ],
                 footer: {
-                    text: 'Debug Mode • Fund allocation based on current votes'
+                    text: 'Fund allocation based on current votes • SmallStreet Governance'
                 }
             };
             
             await message.reply({ embeds: [allocationEmbed] });
             
-            console.log(`✅ Debug participation report completed for poll ${messageId}`);
+            console.log(`✅ Participation report completed for poll ${messageId}`);
             
         } catch (error) {
-            console.error('❌ Error in participation debug:', error);
-            await message.reply(`❌ **Debug failed:** ${error.message}\n\nCheck console for detailed error logs.`);
+            console.error('❌ Error in participation command:', error);
+            await message.reply(`❌ **Participation analysis failed:** ${error.message}`);
         }
         return;
     }
