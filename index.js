@@ -596,10 +596,24 @@ async function getEnhancedPollResults(messageId) {
                     continue;
                 }
                 
-                const member = message.guild.members.cache.get(user.id);
+                let member = message.guild.members.cache.get(user.id);
                 if (!member) {
-                    console.log(`🔍 Debug: Could not find member for user ${user.username}`);
-                    continue;
+                    console.log(`🔍 Debug: Could not find member for user ${user.username} in cache, trying to fetch...`);
+                    try {
+                        // Try to fetch the member if not in cache
+                        member = await message.guild.members.fetch(user.id);
+                        if (!member) {
+                            console.log(`🔍 Debug: Could not fetch member for user ${user.username}, using user data only`);
+                            // Use user data even if we can't get member data
+                            member = { displayName: user.username };
+                        } else {
+                            console.log(`🔍 Debug: Successfully fetched member for user ${user.username}`);
+                        }
+                    } catch (fetchError) {
+                        console.log(`🔍 Debug: Error fetching member for user ${user.username}: ${fetchError.message}, using user data only`);
+                        // Use user data even if we can't get member data
+                        member = { displayName: user.username };
+                    }
                 }
 
                 // Get user's XP level (simulate for now - you'll need to integrate with your XP system)
@@ -1840,6 +1854,80 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle debug command to test user processing
+    if (message.content === '!testuserprocessing' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+        try {
+            // Find the latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found** to test user processing on.');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const pollMessage = await message.channel.messages.fetch(latestPoll.id);
+            const reactions = pollMessage.reactions.cache;
+            
+            let testResults = `🧪 **User Processing Test for Poll ${latestPoll.id}:**\n\n`;
+            
+            for (const [emoji, reaction] of reactions) {
+                const choice = getChoiceFromEmoji(emoji);
+                if (!choice) continue;
+                
+                testResults += `**${emoji} Reaction (${choice}):**\n`;
+                
+                const users = await reaction.users.fetch();
+                for (const user of users.values()) {
+                    testResults += `\n👤 **User: ${user.username} (${user.id})**\n`;
+                    testResults += `- Bot: ${user.bot ? 'Yes' : 'No'}\n`;
+                    
+                    if (user.bot) {
+                        testResults += `- Status: Skipped (Bot)\n`;
+                        continue;
+                    }
+                    
+                    const member = message.guild.members.cache.get(user.id);
+                    if (member) {
+                        testResults += `- Member Cache: Found\n`;
+                        testResults += `- Display Name: ${member.displayName}\n`;
+                        testResults += `- Status: ✅ Will be processed\n`;
+                    } else {
+                        testResults += `- Member Cache: Not found\n`;
+                        try {
+                            const fetchedMember = await message.guild.members.fetch(user.id);
+                            if (fetchedMember) {
+                                testResults += `- Member Fetch: Success\n`;
+                                testResults += `- Display Name: ${fetchedMember.displayName}\n`;
+                                testResults += `- Status: ✅ Will be processed (fetched)\n`;
+                            } else {
+                                testResults += `- Member Fetch: Failed\n`;
+                                testResults += `- Status: ❌ Will be skipped\n`;
+                            }
+                        } catch (error) {
+                            testResults += `- Member Fetch: Error - ${error.message}\n`;
+                            testResults += `- Status: ❌ Will be skipped\n`;
+                        }
+                    }
+                }
+                testResults += '\n';
+            }
+            
+            await message.reply(testResults);
+            
+        } catch (error) {
+            console.error('❌ Error testing user processing:', error);
+            await message.reply(`❌ User processing test failed: ${error.message}`);
         }
         return;
     }
