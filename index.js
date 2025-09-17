@@ -297,6 +297,42 @@ async function storePollData(pollData) {
     }
 }
 
+// Function to update poll data with final XP rewards
+async function updatePollDataXP(pollId, discordId, finalXP) {
+    try {
+        console.log(`📤 Updating XP for poll ${pollId}, user ${discordId}: ${finalXP} XP`);
+
+        const updateData = {
+            poll_id: pollId,
+            discord_id: discordId,
+            xp_awarded: finalXP
+        };
+
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll-update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Failed to update poll XP:', response.status, errorText);
+            return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+        }
+
+        const result = await response.json();
+        console.log('✅ Poll XP updated successfully:', result);
+        return { success: true, data: result };
+    } catch (error) {
+        console.error('❌ Error updating poll XP:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 
 // Function to send Discord user data to SmallStreet API
 async function insertUserToSmallStreetUsermeta(userData) {
@@ -727,6 +763,11 @@ async function getEnhancedPollResults(messageId) {
                 results[choice].voters.push(voter);
                 results.uniqueVoters.add(user.id);
                 
+                // Calculate XP for this vote (base XP only, bonuses calculated later)
+                const baseXP = 1000000; // 1M XP for voting
+                
+                console.log(`🔍 Debug: User ${user.username} - Base XP: ${baseXP}, Choice: ${choice}, Voting Power: ${votingPower}`);
+                
                 // Store individual vote in database
                 const voteData = {
                     poll_id: messageId,
@@ -737,7 +778,7 @@ async function getEnhancedPollResults(messageId) {
                     username: user.username,
                     display_name: member.displayName,
                     membership: userVerification.exists ? 'verified' : 'unverified',
-                    xp_awarded: 0 // Will be calculated later in awardPollXP
+                    xp_awarded: baseXP // Base XP for voting
                 };
                 
                 try {
@@ -920,7 +961,7 @@ function calculatePollXP(voter, winningChoice) {
 }
 
 // Award XP to poll participants
-async function awardPollXP(voters, winningChoice) {
+async function awardPollXP(voters, winningChoice, pollId) {
     try {
         const xpAwards = [];
         
@@ -938,6 +979,16 @@ async function awardPollXP(voters, winningChoice) {
                     top_contributor: voter.votingPower >= 25 ? 10000000 : 0
                 }
             });
+            
+            // Update database with final XP
+            if (pollId) {
+                try {
+                    await updatePollDataXP(pollId, voter.userId, xpAwarded);
+                    console.log(`✅ Updated XP in database for ${voter.username}: ${xpAwarded} XP`);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update XP in database for ${voter.username}:`, updateError);
+                }
+            }
             
             xpAwards.push({
                 userId: voter.userId,
@@ -959,13 +1010,14 @@ async function awardPollXP(voters, winningChoice) {
 // Add XP event (placeholder - integrate with your XP system)
 async function addXpEvent(userId, eventType, xp, meta = {}) {
     try {
-        // This is a placeholder - you'll need to integrate with your actual XP system
+        console.log(`🔍 Debug: addXpEvent called for user ${userId}`);
         console.log(`💰 XP Event: User ${userId} earned ${formatEDecimal(xp)} (${xp.toLocaleString()} XP) for ${eventType}`);
         console.log(`📊 Meta:`, JSON.stringify(meta, null, 2));
         
-        // Here you would integrate with your XP database system
+        // This is a placeholder - you'll need to integrate with your actual XP system
         // For now, just log the event
         
+        console.log(`✅ XP Event logged successfully for user ${userId}`);
         return { success: true };
     } catch (error) {
         console.error('Error adding XP event:', error);
@@ -1031,7 +1083,7 @@ async function displayEnhancedPollResults(messageId) {
             ...data.disaster.voters
         ];
         
-        const xpResult = await awardPollXP(allVoters, winningChoice);
+        const xpResult = await awardPollXP(allVoters, winningChoice, messageId);
 
         const resultsEmbed = {
             title: '📊 Monthly Poll Results - Resource Allocation',
@@ -1894,6 +1946,23 @@ client.on('messageCreate', async (message) => {
             
             const data = results.data;
             
+            // Calculate and award XP for participation check
+            const participationVoters = [
+                ...data.peace.voters,
+                ...data.voting.voters,
+                ...data.disaster.voters
+            ];
+            
+            // Determine winning choice for XP calculation
+            const participationWinningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            console.log(`🔍 Debug: Winning choice for XP calculation: ${participationWinningChoice}`);
+            
+            // Award XP to all participants
+            const xpResult = await awardPollXP(participationVoters, participationWinningChoice, messageId);
+            console.log(`🔍 Debug: XP award result:`, xpResult);
+            
             // Create comprehensive debug embed
             const debugEmbed = {
                 title: '🔍 **Poll Participation Debug Report**',
@@ -1918,6 +1987,13 @@ client.on('messageCreate', async (message) => {
                             .map((voter, index) => 
                                 `${index + 1}. **${voter.displayName}**\n   • Choice: ${voter.choice}\n   • XP: ${formatEDecimal(voter.xpLevel)}\n   • Power: ${voter.votingPower}x\n   • Verified: ${voter.verified ? '✅ Yes' : '❌ No'}`
                             ).join('\n\n') || 'No participants found',
+                        inline: false
+                    },
+                    {
+                        name: '💰 **XP Distribution**',
+                        value: xpResult.success ? 
+                            `✅ **XP Awarded Successfully!**\n\n**Winning Choice:** ${participationWinningChoice}\n**Participants:** ${participationVoters.length}\n**Total XP Awards:** ${xpResult.awards ? xpResult.awards.length : 0}\n\n**XP Breakdown:**\n• Base: 1M XP (everyone)\n• Winning: +5M XP (winners)\n• Top Contributor: +10M XP (high power)` :
+                            `❌ **XP Award Failed:** ${xpResult.error}`,
                         inline: false
                     }
                 ],
