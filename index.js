@@ -1553,6 +1553,157 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
+    // Handle debug command for poll participation in monthly-redemption channel
+    if (message.content === '!participation' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+        try {
+            await message.reply('🔍 **Debug Mode:** Searching for recent polls in this channel...');
+            
+            // Fetch recent messages to find poll messages
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll messages found** in this channel. Create a poll first with `!createpoll`');
+                return;
+            }
+            
+            // Get the most recent poll
+            const latestPoll = pollMessages.first();
+            const messageId = latestPoll.id;
+            
+            console.log(`🔍 Debug: Found poll message ID: ${messageId}`);
+            
+            await message.reply(`📊 **Found Poll:** Analyzing participation for message \`${messageId}\`\n*Processing data...*`);
+            
+            // Get enhanced poll results
+            const results = await getEnhancedPollResults(messageId);
+            
+            if (!results.success) {
+                await message.reply(`❌ **Failed to get poll data:** ${results.error}`);
+                return;
+            }
+            
+            const data = results.data;
+            
+            // Create comprehensive debug embed
+            const debugEmbed = {
+                title: '🔍 **Poll Participation Debug Report**',
+                description: `**Poll Message ID:** \`${messageId}\`\n**Analysis Time:** ${new Date().toISOString()}`,
+                color: 0x0099ff,
+                fields: [
+                    {
+                        name: '📊 **Vote Counts**',
+                        value: `🕊️ **Peace:** ${data.peace.count} votes\n🗳️ **Voting:** ${data.voting.count} votes\n🆘 **Disaster:** ${data.disaster.count} votes\n\n**Total Voters:** ${data.totalVoters}`,
+                        inline: true
+                    },
+                    {
+                        name: '⚖️ **Weighted Votes**',
+                        value: `🕊️ **Peace:** ${data.peace.weighted} weighted\n🗳️ **Voting:** ${data.voting.weighted} weighted\n🆘 **Disaster:** ${data.disaster.weighted} weighted\n\n**Total Weighted:** ${data.peace.weighted + data.voting.weighted + data.disaster.weighted}`,
+                        inline: true
+                    },
+                    {
+                        name: '🏆 **Top Contributors**',
+                        value: data.peace.voters.concat(data.voting.voters, data.disaster.voters)
+                            .sort((a, b) => b.votingPower - a.votingPower)
+                            .slice(0, 5)
+                            .map((voter, index) => 
+                                `${index + 1}. **${voter.displayName}**\n   • Choice: ${voter.choice}\n   • XP: ${formatEDecimal(voter.xpLevel)}\n   • Power: ${voter.votingPower}x`
+                            ).join('\n\n') || 'No participants found',
+                        inline: false
+                    }
+                ],
+                footer: {
+                    text: 'Debug Mode • Make Everyone Great Again • SmallStreet Governance'
+                },
+                timestamp: new Date().toISOString()
+            };
+            
+            await message.reply({ embeds: [debugEmbed] });
+            
+            // Create detailed participant list
+            const allVoters = [
+                ...data.peace.voters,
+                ...data.voting.voters,
+                ...data.disaster.voters
+            ];
+            
+            if (allVoters.length > 0) {
+                let participantList = '📋 **Complete Participant List:**\n\n';
+                
+                // Group by choice
+                const peaceVoters = data.peace.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
+                const votingVoters = data.voting.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
+                const disasterVoters = data.disaster.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
+                
+                participantList += `🕊️ **Peace Initiatives (${data.peace.voters.length}):**\n${peaceVoters.join('\n') || 'None'}\n\n`;
+                participantList += `🗳️ **Voting Programs (${data.voting.voters.length}):**\n${votingVoters.join('\n') || 'None'}\n\n`;
+                participantList += `🆘 **Disaster Relief (${data.disaster.voters.length}):**\n${disasterVoters.join('\n') || 'None'}`;
+                
+                // Split into chunks if too long
+                if (participantList.length > 2000) {
+                    const chunks = participantList.match(/[\s\S]{1,2000}/g) || [];
+                    for (let i = 0; i < chunks.length; i++) {
+                        await message.reply(`**Participant List (Part ${i + 1}/${chunks.length}):**\n\`\`\`\n${chunks[i]}\n\`\`\``);
+                    }
+                } else {
+                    await message.reply(`\`\`\`\n${participantList}\n\`\`\``);
+                }
+            } else {
+                await message.reply('❌ **No participants found** in this poll.');
+            }
+            
+            // Calculate and show fund allocation
+            const allocation = calculateFundAllocation(data);
+            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            const allocationEmbed = {
+                title: '💰 **Fund Allocation Preview**',
+                description: 'How community resources would be distributed based on current votes:',
+                color: 0x00ff00,
+                fields: [
+                    {
+                        name: '🕊️ **Peace Initiatives**',
+                        value: `**Allocation:** ${allocation.peace.percentage.toFixed(1)}%\n**Fund:** $${allocation.peace.allocation.toLocaleString()}`,
+                        inline: true
+                    },
+                    {
+                        name: '🗳️ **Voting Programs**',
+                        value: `**Allocation:** ${allocation.voting.percentage.toFixed(1)}%\n**Fund:** $${allocation.voting.allocation.toLocaleString()}`,
+                        inline: true
+                    },
+                    {
+                        name: '🆘 **Disaster Relief**',
+                        value: `**Allocation:** ${allocation.disaster.percentage.toFixed(1)}%\n**Fund:** $${allocation.disaster.allocation.toLocaleString()}`,
+                        inline: true
+                    },
+                    {
+                        name: '🏆 **Current Winner**',
+                        value: `**${winningChoice.charAt(0).toUpperCase() + winningChoice.slice(1)}** is leading with ${allocation[winningChoice].percentage.toFixed(1)}% of weighted votes`,
+                        inline: false
+                    }
+                ],
+                footer: {
+                    text: 'Debug Mode • Fund allocation based on current votes'
+                }
+            };
+            
+            await message.reply({ embeds: [allocationEmbed] });
+            
+            console.log(`✅ Debug participation report completed for poll ${messageId}`);
+            
+        } catch (error) {
+            console.error('❌ Error in participation debug:', error);
+            await message.reply(`❌ **Debug failed:** ${error.message}\n\nCheck console for detailed error logs.`);
+        }
+        return;
+    }
+    
     // Handle command to check poll channel
     if (message.content === '!checkpollchannel' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
@@ -1590,6 +1741,11 @@ client.on('messageCreate', async (message) => {
                     {
                         name: '!pollparticipants <message_id>',
                         value: 'Get detailed participant list with voting power and XP levels',
+                        inline: false
+                    },
+                    {
+                        name: '!participation',
+                        value: 'Debug command: Auto-find and analyze the latest poll in #monthly-redemption channel',
                         inline: false
                     },
                     {
