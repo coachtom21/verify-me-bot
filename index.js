@@ -14,7 +14,6 @@ const PORT = process.env.PORT || 3000;
 let isInitialized = false;
 
 // Debug mode for database insertion
-let debugMode = true;
 
 // Healthcheck endpoint
 app.get('/', (req, res) => {
@@ -461,78 +460,6 @@ function phpSerialize(obj) {
     return 'N;';
 }
 
-// Test function to verify API endpoint
-async function testSmallStreetAPI() {
-    try {
-        console.log('🧪 Testing SmallStreet Discord API endpoint...');
-        console.log('🧪 API Key present:', !!process.env.SMALLSTREET_API_KEY);
-        console.log('🧪 API Key length:', process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0);
-        
-        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-        
-        console.log(`🧪 API Test Response: ${response.status} ${response.statusText}`);
-        
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Could not read error response');
-            console.error('🧪 API Error Response:', errorText);
-        }
-        
-        return response.ok;
-    } catch (error) {
-        console.error('🧪 API Test Failed:', error.message);
-        console.error('🧪 Error details:', {
-            message: error.message,
-            code: error.code,
-            type: error.type,
-            stack: error.stack
-        });
-        return false;
-    }
-}
-
-// Test function specifically for Discord invites API
-async function testDiscordInvitesAPI() {
-    try {
-        console.log('🧪 Testing Discord Invites API endpoint...');
-        console.log('🧪 API Key present:', !!process.env.SMALLSTREET_API_KEY);
-        console.log('🧪 API Key length:', process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0);
-        
-        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-invites', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-        
-        console.log(`🧪 Discord Invites API Response: ${response.status} ${response.statusText}`);
-        
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Could not read error response');
-            console.error('🧪 Discord Invites API Error Response:', errorText);
-        } else {
-            const data = await response.json();
-            console.log('🧪 Discord Invites API Data:', data);
-        }
-        
-        return response.ok;
-    } catch (error) {
-        console.error('🧪 Discord Invites API Test Failed:', error.message);
-        console.error('🧪 Error details:', {
-            message: error.message,
-            code: error.code,
-            type: error.type,
-            stack: error.stack
-        });
-        return false;
-    }
-}
 
 // Function to store poll data in WordPress database
 async function storePollData(pollData) {
@@ -1728,7 +1655,6 @@ client.once('ready', async () => {
     try {
         // Test API connection on startup
         console.log('🧪 Testing API connection on startup...');
-        const apiTest = await testSmallStreetAPI();
         console.log(`🧪 Startup API Test Result:`, apiTest);
         
         // Clear any existing bot messages in the verification channel
@@ -1863,7 +1789,7 @@ client.on('guildMemberAdd', async (member) => {
         // Send immediate notification to admin that event fired
         try {
             const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
-            if (adminUser && debugMode) {
+            if (adminUser) {
                 await adminUser.send(`🔔 **Member Join Event Fired!**\n**User:** ${member.user.tag} (${member.user.id})\n**Guild:** ${member.guild.name}\n**Time:** ${new Date().toISOString()}`);
             }
         } catch (adminDmError) {
@@ -1939,42 +1865,6 @@ client.on('messageCreate', async (message) => {
 
     
     
-    
-    
-    
-    // Handle comprehensive debug command
-    if (message.content === '!debug' && message.author.id === process.env.ADMIN_USER_ID) {
-        try {
-            const debugInfo = {
-                environment: {
-                    hasApiKey: !!process.env.SMALLSTREET_API_KEY,
-                    apiKeyLength: process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0,
-                    hasVerifyChannel: !!process.env.VERIFY_CHANNEL_ID,
-                    hasWelcomeChannel: !!process.env.WELCOME_CHANNEL_ID,
-                    hasMegavoterRole: !!process.env.MEGAVOTER_ROLE_ID,
-                    hasPatronRole: !!process.env.PATRON_ROLE_ID,
-                    hasAdminUser: !!process.env.ADMIN_USER_ID
-                },
-                bot: {
-                    isReady: client.isReady(),
-                    guilds: client.guilds.cache.size,
-                    users: client.users.cache.size,
-                    intents: client.options.intents
-                }
-            };
-            
-            await message.reply(`🔍 **Debug Information:**\n\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``);
-            
-            // Test API connectivity
-            const apiTest = await testSmallStreetAPI();
-            await message.reply(`🧪 **API Test:** ${apiTest ? '✅ Accessible' : '❌ Not accessible'}`);
-            
-        } catch (error) {
-            await message.reply(`❌ Debug failed: ${error.message}`);
-        }
-        return;
-    }
-    
     // Handle command to check member join events
     if (message.content === '!checkevents' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
@@ -2002,84 +1892,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // Handle command to toggle debug mode
-    if (message.content === '!debugmode' && message.author.id === process.env.ADMIN_USER_ID) {
-        debugMode = !debugMode;
-        await message.reply(`🔧 **Debug Mode:** ${debugMode ? '✅ Enabled' : '❌ Disabled'}\n\nWhen enabled, you'll receive DMs with database insertion results when users join the server.`);
-        return;
-    }
-    
-    // Handle command to show current debug status
-    if (message.content === '!debugstatus' && message.author.id === process.env.ADMIN_USER_ID) {
-        await message.reply(`🔍 **Debug Status:**\n- Debug Mode: ${debugMode ? '✅ Enabled' : '❌ Disabled'}\n- Admin User ID: ${process.env.ADMIN_USER_ID}\n- API Key Present: ${!!process.env.SMALLSTREET_API_KEY}\n\nUse \`!debugmode\` to toggle debug notifications.`);
-        return;
-    }
-    
-    // Handle command to test member join event
-    if (message.content === '!testmemberjoin' && message.author.id === process.env.ADMIN_USER_ID) {
-        try {
-            const guild = message.guild;
-            const botMember = guild.members.cache.get(client.user.id);
-            const botPermissions = botMember.permissions;
-            
-            await message.reply(`🧪 **Member Join Event Test:**\n- Bot has GuildMembers intent: ${client.options.intents.has('GuildMembers')}\n- Bot can see members: ${botMember ? '✅ Yes' : '❌ No'}\n- Bot permissions: ${botPermissions.has('ViewChannel') ? '✅ View Channel' : '❌ No View Channel'}\n- Guild member count: ${guild.memberCount}\n\n**To test:** Invite someone to the server and check if you receive a DM notification.`);
-        } catch (error) {
-            await message.reply(`❌ Member join test failed: ${error.message}`);
-        }
-        return;
-    }
-    
-    // Handle command to test role assignment
-    if (message.content === '!testrole' && message.author.id === process.env.ADMIN_USER_ID) {
-        try {
-            const PATRON_ROLE_ID = process.env.PATRON_ROLE_ID;
-            const MEGAVOTER_ROLE_ID = process.env.MEGAVOTER_ROLE_ID;
-            
-            const patronRole = message.guild.roles.cache.get(PATRON_ROLE_ID);
-            const megavoterRole = message.guild.roles.cache.get(MEGAVOTER_ROLE_ID);
-            
-            const botMember = message.guild.members.cache.get(client.user.id);
-            const botRole = botMember.roles.highest;
-            
-            // Check specific permissions
-            const canManageRoles = botMember.permissions.has('ManageRoles');
-            const canManageGuild = botMember.permissions.has('ManageGuild');
-            const canViewChannel = botMember.permissions.has('ViewChannel');
-            const canSendMessages = botMember.permissions.has('SendMessages');
-            
-            // Check role hierarchy
-            const canManagePatron = patronRole ? botRole.position > patronRole.position : false;
-            const canManageMegavoter = megavoterRole ? botRole.position > megavoterRole.position : false;
-            
-            await message.reply(`🧪 **Role Assignment Test:**\n- PATRON_ROLE_ID: ${PATRON_ROLE_ID}\n- Patron role found: ${patronRole ? `✅ ${patronRole.name}` : '❌ NOT FOUND'}\n- MEGAVOTER_ROLE_ID: ${MEGAVOTER_ROLE_ID}\n- MEGAvoter role found: ${megavoterRole ? `✅ ${megavoterRole.name}` : '❌ NOT FOUND'}\n\n**Bot Permissions:**\n- Manage Roles: ${canManageRoles ? '✅ Yes' : '❌ No'}\n- Manage Guild: ${canManageGuild ? '✅ Yes' : '❌ No'}\n- View Channel: ${canViewChannel ? '✅ Yes' : '❌ No'}\n- Send Messages: ${canSendMessages ? '✅ Yes' : '❌ No'}\n\n**Role Hierarchy:**\n- Bot's highest role: ${botRole.name} (Position: ${botRole.position})\n- Patron role position: ${patronRole ? patronRole.position : 'N/A'}\n- Can manage Patron: ${canManagePatron ? '✅ Yes' : '❌ No'}\n- MEGAvoter role position: ${megavoterRole ? megavoterRole.position : 'N/A'}\n- Can manage MEGAvoter: ${canManageMegavoter ? '✅ Yes' : '❌ No'}`);
-        } catch (error) {
-            await message.reply(`❌ Role test failed: ${error.message}`);
-        }
-        return;
-    }
-    
-    // Handle test command for membership verification and role assignment
-    if (message.content === '!testmembership' && message.author.id === process.env.ADMIN_USER_ID) {
-        try {
-            await message.reply('🧪 Testing membership verification and role assignment...');
-            
-            // Test with a sample email (you can change this to a real email from your database)
-            const testEmail = 'test@smallstreet.app'; // Change this to a real email
-            
-            console.log('🧪 Testing membership verification...');
-            const [isMember, membershipType] = await verifySmallStreetMembership(testEmail);
-            
-            console.log('🧪 Testing role assignment...');
-            const roleResult = await assignRoleBasedOnMembership(message.member, membershipType || 'pioneer');
-            
-            await message.reply(`🧪 **Membership Test Result:**\n- Email: ${testEmail}\n- Found in API: ${isMember ? '✅ Yes' : '❌ No'}\n- Membership Type: ${membershipType || 'None'}\n- Role Assignment: ${roleResult.roleName || 'Failed'}\n- Error: ${roleResult.error || 'None'}`);
-            
-        } catch (error) {
-            console.error('🧪 Membership test failed:', error);
-            await message.reply(`❌ Test failed: ${error.message}`);
-        }
-        return;
-    }
     
     // Handle test command for specific email verification
     if (message.content.startsWith('!testemail ') && message.author.id === process.env.ADMIN_USER_ID) {
@@ -2933,11 +2745,6 @@ client.on('messageCreate', async (message) => {
                         inline: false
                     },
                     {
-                        name: '🔧 Debug Commands',
-                        value: '• `!testvotes` - Simulate votes on latest poll\n• `!checkreactions <message_id>` - Show raw reaction data\n• `!testuserprocessing <message_id>` - Debug user processing\n• `!testapi` - Test API connectivity\n• `!testuser <username>` - Test user verification\n• `!testpollstorage` - Test poll data storage\n• `!testinvitesapi` - Test Discord invites API',
-                        inline: false
-                    },
-                    {
                         name: '!pollhelp',
                         value: 'Show this help message',
                         inline: false
@@ -3237,54 +3044,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // Handle test command to simulate poll votes
-    if (message.content === '!testvotes' && message.author.id === process.env.ADMIN_USER_ID && message.channel.id === process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
-        try {
-            await message.reply('🧪 **Test Mode:** Simulating votes for testing...');
-            
-            // Find the latest poll
-            const messages = await message.channel.messages.fetch({ limit: 50 });
-            const pollMessages = messages.filter(msg => 
-                msg.author.id === client.user.id && 
-                msg.embeds.length > 0 &&
-                msg.embeds[0].title && 
-                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
-            );
-            
-            if (pollMessages.size === 0) {
-                await message.reply('❌ **No poll found** to test votes on. Create a poll first with `!createpoll`');
-                return;
-            }
-            
-            const latestPoll = pollMessages.first();
-            const pollMessage = await message.channel.messages.fetch(latestPoll.id);
-            
-            // Simulate some test votes
-            const testVotes = [
-                { emoji: '🕊️', count: 3 },
-                { emoji: '🗳️', count: 2 },
-                { emoji: '🆘', count: 1 }
-            ];
-            
-            for (const vote of testVotes) {
-                for (let i = 0; i < vote.count; i++) {
-                    try {
-                        await pollMessage.react(vote.emoji);
-                        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between reactions
-                    } catch (error) {
-                        console.log(`Could not add reaction ${vote.emoji}:`, error.message);
-                    }
-                }
-            }
-            
-            await message.reply(`✅ **Test votes added:**\n- 🕊️ Peace: 3 votes\n- 🗳️ Voting: 2 votes\n- 🆘 Disaster: 1 vote\n\nNow run \`!participation\` to see the results!`);
-            
-        } catch (error) {
-            console.error('❌ Error adding test votes:', error);
-            await message.reply(`❌ Test votes failed: ${error.message}`);
-        }
-        return;
-    }
     
     // Handle command to check poll scheduler status
     if (message.content === '!pollscheduler' && message.author.id === process.env.ADMIN_USER_ID) {
@@ -3442,7 +3201,7 @@ client.on('messageCreate', async (message) => {
             }
 
             // Send debug notification if enabled
-            if (debugMode) {
+            if (true) {
                 try {
                     const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
                     if (adminUser) {
