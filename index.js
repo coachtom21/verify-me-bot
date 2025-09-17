@@ -198,6 +198,9 @@ function phpSerialize(obj) {
 async function testSmallStreetAPI() {
     try {
         console.log('🧪 Testing SmallStreet Discord API endpoint...');
+        console.log('🧪 API Key present:', !!process.env.SMALLSTREET_API_KEY);
+        console.log('🧪 API Key length:', process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0);
+        
         const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
             method: 'GET',
             headers: {
@@ -205,11 +208,92 @@ async function testSmallStreetAPI() {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
+        
         console.log(`🧪 API Test Response: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Could not read error response');
+            console.error('🧪 API Error Response:', errorText);
+        }
+        
         return response.ok;
     } catch (error) {
         console.error('🧪 API Test Failed:', error.message);
+        console.error('🧪 Error details:', {
+            message: error.message,
+            code: error.code,
+            type: error.type,
+            stack: error.stack
+        });
         return false;
+    }
+}
+
+// Test function specifically for Discord invites API
+async function testDiscordInvitesAPI() {
+    try {
+        console.log('🧪 Testing Discord Invites API endpoint...');
+        console.log('🧪 API Key present:', !!process.env.SMALLSTREET_API_KEY);
+        console.log('🧪 API Key length:', process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0);
+        
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-invites', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        
+        console.log(`🧪 Discord Invites API Response: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Could not read error response');
+            console.error('🧪 Discord Invites API Error Response:', errorText);
+        } else {
+            const data = await response.json();
+            console.log('🧪 Discord Invites API Data:', data);
+        }
+        
+        return response.ok;
+    } catch (error) {
+        console.error('🧪 Discord Invites API Test Failed:', error.message);
+        console.error('🧪 Error details:', {
+            message: error.message,
+            code: error.code,
+            type: error.type,
+            stack: error.stack
+        });
+        return false;
+    }
+}
+
+// Function to store poll data in WordPress database
+async function storePollData(pollData) {
+    try {
+        console.log('📤 Storing poll data:', pollData);
+
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(pollData)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Failed to store poll data:', response.status, errorText);
+            return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+        }
+
+        const result = await response.json();
+        console.log('✅ Poll data stored successfully:', result);
+        return { success: true, data: result };
+    } catch (error) {
+        console.error('❌ Error storing poll data:', error);
+        return { success: false, error: error.message };
     }
 }
 
@@ -642,6 +726,26 @@ async function getEnhancedPollResults(messageId) {
                 results[choice].weighted += votingPower;
                 results[choice].voters.push(voter);
                 results.uniqueVoters.add(user.id);
+                
+                // Store individual vote in database
+                const voteData = {
+                    poll_id: messageId,
+                    email: userVerification.exists ? userVerification.userData.email : `${user.username}@discord.local`,
+                    vote: choice,
+                    vote_type: 'monthly_poll',
+                    user_id: user.id,
+                    username: user.username,
+                    display_name: member.displayName,
+                    membership: userVerification.exists ? 'verified' : 'unverified',
+                    xp_awarded: 0 // Will be calculated later in awardPollXP
+                };
+                
+                try {
+                    await storePollData(voteData);
+                    console.log(`✅ Stored poll data for ${user.username}`);
+                } catch (storeError) {
+                    console.error(`❌ Failed to store poll data for ${user.username}:`, storeError);
+                }
                 
                 console.log(`🔍 Debug: Added voter to ${choice} - Count: ${results[choice].count}, Weighted: ${results[choice].weighted}`);
             }
@@ -1357,9 +1461,25 @@ client.on('messageCreate', async (message) => {
     // Handle test command for API endpoint
     if (message.content === '!testapi' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
-            await message.reply('🧪 Testing API endpoint...');
-            const apiTest = await testSmallStreetAPI();
-            await message.reply(`🧪 API Test Result: ${apiTest ? '✅ API is accessible' : '❌ API is not accessible'}`);
+            await message.reply('🧪 Testing API endpoints...');
+            
+            // Test both APIs
+            const discordUserAPI = await testSmallStreetAPI();
+            const discordInvitesAPI = await testDiscordInvitesAPI();
+            
+            let result = '🧪 **API Test Results:**\n\n';
+            result += `**Discord User API:** ${discordUserAPI ? '✅ Accessible' : '❌ Not accessible'}\n`;
+            result += `**Discord Invites API:** ${discordInvitesAPI ? '✅ Accessible' : '❌ Not accessible'}\n\n`;
+            
+            if (!discordUserAPI || !discordInvitesAPI) {
+                result += '**Troubleshooting:**\n';
+                result += '1. Check if API key is set in environment variables\n';
+                result += '2. Verify API key has correct permissions\n';
+                result += '3. Check if API endpoints are accessible\n';
+                result += '4. Review console logs for detailed error information';
+            }
+            
+            await message.reply(result);
         } catch (error) {
             await message.reply(`❌ API Test failed: ${error.message}`);
         }
@@ -1927,6 +2047,11 @@ client.on('messageCreate', async (message) => {
                         inline: false
                     },
                     {
+                        name: '🔧 Debug Commands',
+                        value: '• `!testvotes` - Simulate votes on latest poll\n• `!checkreactions <message_id>` - Show raw reaction data\n• `!testuserprocessing <message_id>` - Debug user processing\n• `!testapi` - Test API connectivity\n• `!testuser <username>` - Test user verification\n• `!testpollstorage` - Test poll data storage\n• `!testinvitesapi` - Test Discord invites API',
+                        inline: false
+                    },
+                    {
                         name: '!pollhelp',
                         value: 'Show this help message',
                         inline: false
@@ -1940,6 +2065,79 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to test poll data storage
+    if (message.content === '!testpollstorage' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 **Testing Poll Data Storage...**');
+            
+            const testPollData = {
+                poll_id: 'test_poll_123',
+                email: 'test@example.com',
+                vote: 'peace',
+                vote_type: 'monthly_poll',
+                user_id: '123456789',
+                username: 'testuser',
+                display_name: 'Test User',
+                membership: 'verified',
+                xp_awarded: 100
+            };
+            
+            const result = await storePollData(testPollData);
+            
+            if (result.success) {
+                await message.reply(`✅ **Poll Data Storage Test Successful!**\n\n**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``);
+            } else {
+                await message.reply(`❌ **Poll Data Storage Test Failed:**\n\n**Error:** ${result.error}`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error testing poll data storage:', error);
+            await message.reply(`❌ Poll data storage test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to test Discord invites API specifically
+    if (message.content === '!testinvitesapi' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 **Testing Discord Invites API specifically...**');
+            
+            const invitesData = await getDiscordInvitesData();
+            
+            if (invitesData.success) {
+                const data = invitesData.data;
+                let apiInfo = `✅ **Discord Invites API Test Successful!**\n\n`;
+                apiInfo += `**Total Records:** ${data.length}\n\n`;
+                apiInfo += `**Sample Records:**\n`;
+                
+                // Show first 3 records
+                for (let i = 0; i < Math.min(3, data.length); i++) {
+                    const record = data[i];
+                    try {
+                        const discordData = JSON.parse(record.discord_invite);
+                        apiInfo += `\n**Record ${i + 1}:**\n`;
+                        apiInfo += `- User ID: ${record.user_id}\n`;
+                        apiInfo += `- Email: ${record.email}\n`;
+                        apiInfo += `- Discord Username: ${discordData.discord_username}\n`;
+                        apiInfo += `- Display Name: ${discordData.discord_display_name}\n`;
+                        apiInfo += `- XP Awarded: ${discordData.xp_awarded}\n`;
+                    } catch (parseError) {
+                        apiInfo += `\n**Record ${i + 1}:** Error parsing JSON\n`;
+                    }
+                }
+                
+                await message.reply(apiInfo);
+            } else {
+                await message.reply(`❌ **Discord Invites API Test Failed:** ${invitesData.error}\n\n**Possible Issues:**\n1. API key not set or invalid\n2. API endpoint not accessible\n3. Authentication failed\n4. Server error\n\nCheck console logs for detailed error information.`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error testing Discord Invites API:', error);
+            await message.reply(`❌ Discord Invites API test failed: ${error.message}\n\nCheck console logs for detailed error information.`);
         }
         return;
     }
