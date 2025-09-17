@@ -1276,20 +1276,89 @@ async function awardPollXP(voters, winningChoice, pollId) {
     }
 }
 
-// Add XP event (placeholder - integrate with your XP system)
+// Add XP event - integrate with SmallStreet XP system
 async function addXpEvent(userId, eventType, xp, meta = {}) {
     try {
         console.log(`🔍 Debug: addXpEvent called for user ${userId}`);
         console.log(`💰 XP Event: User ${userId} earned ${formatEDecimal(xp)} (${xp.toLocaleString()} XP) for ${eventType}`);
         console.log(`📊 Meta:`, JSON.stringify(meta, null, 2));
         
-        // This is a placeholder - you'll need to integrate with your actual XP system
-        // For now, just log the event
+        // Award XP through SmallStreet API
+        const xpAwardData = {
+            discord_id: userId,
+            xp_amount: xp,
+            event_type: eventType,
+            event_meta: meta,
+            timestamp: new Date().toISOString()
+        };
         
-        console.log(`✅ XP Event logged successfully for user ${userId}`);
-        return { success: true };
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/award-xp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(xpAwardData)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Failed to award XP via API: ${response.status} ${errorText}`);
+            
+            // Fallback: Try alternative XP awarding method
+            console.log(`🔄 Trying alternative XP awarding method...`);
+            return await awardXPAlternative(userId, xp, eventType, meta);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ XP awarded successfully via API:`, result);
+        return { success: true, data: result };
+        
     } catch (error) {
         console.error('Error adding XP event:', error);
+        
+        // Fallback: Try alternative XP awarding method
+        console.log(`🔄 Trying alternative XP awarding method due to error...`);
+        return await awardXPAlternative(userId, xp, eventType, meta);
+    }
+}
+
+// Alternative XP awarding method (fallback)
+async function awardXPAlternative(userId, xp, eventType, meta = {}) {
+    try {
+        console.log(`🔄 Alternative XP awarding for user ${userId}: ${xp} XP`);
+        
+        // Try to update user's XP through the user update API
+        const userUpdateData = {
+            discord_id: userId,
+            xp_awarded: xp,
+            event_type: eventType,
+            event_meta: meta,
+            timestamp: new Date().toISOString()
+        };
+        
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(userUpdateData)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log(`✅ XP awarded via alternative method:`, result);
+            return { success: true, data: result };
+        } else {
+            console.error(`❌ Alternative XP awarding failed: ${response.status}`);
+            return { success: false, error: `Alternative method failed: ${response.status}` };
+        }
+        
+    } catch (error) {
+        console.error('Error in alternative XP awarding:', error);
         return { success: false, error: error.message };
     }
 }
@@ -2199,6 +2268,21 @@ client.on('messageCreate', async (message) => {
             const xpResult = await awardPollXP(participationVoters, participationWinningChoice, messageId);
             console.log(`🔍 XP award result:`, xpResult);
             
+            // Show detailed XP breakdown in the response
+            if (xpResult.success && xpResult.awards) {
+                let xpBreakdown = '\n💰 **XP Awards Summary:**\n';
+                xpResult.awards.forEach((award, index) => {
+                    const isWinner = award.choice === participationWinningChoice;
+                    const isTopContributor = award.votingPower >= 25;
+                    xpBreakdown += `${index + 1}. **${award.username}**: ${formatEDecimal(award.xpAwarded)} XP\n`;
+                    xpBreakdown += `   • Choice: ${award.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
+                    xpBreakdown += `   • Breakdown: 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n\n`;
+                });
+                
+                // Send XP breakdown as a separate message
+                await message.reply(xpBreakdown);
+            }
+            
             // Determine the winning choice
             const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
                                 data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
@@ -2278,6 +2362,70 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('❌ Error in participation command:', error);
             await message.reply(`❌ **Participation analysis failed:** ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to manually award XP for testing
+    if (message.content === '!awardxp' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🔄 **Manually triggering XP awards for latest poll...**');
+            
+            // Find latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found.** Create a poll first with `!createpoll`');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const messageId = latestPoll.id;
+            
+            // Get poll results
+            const results = await getEnhancedPollResults(messageId);
+            if (!results.success) {
+                await message.reply(`❌ **Failed to get poll data:** ${results.error}`);
+                return;
+            }
+            
+            const data = results.data;
+            const allVoters = [...data.peace.voters, ...data.voting.voters, ...data.disaster.voters];
+            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            // Award XP
+            const xpResult = await awardPollXP(allVoters, winningChoice, messageId);
+            
+            if (xpResult.success) {
+                let response = `✅ **XP Awards Completed!**\n\n`;
+                response += `**Poll ID:** \`${messageId}\`\n`;
+                response += `**Winning Choice:** ${winningChoice}\n`;
+                response += `**Participants:** ${xpResult.awards.length}\n\n`;
+                
+                response += `**XP Breakdown:**\n`;
+                xpResult.awards.forEach((award, index) => {
+                    const isWinner = award.choice === winningChoice;
+                    const isTopContributor = award.votingPower >= 25;
+                    response += `${index + 1}. **${award.username}**: ${formatEDecimal(award.xpAwarded)} XP\n`;
+                    response += `   • Choice: ${award.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
+                    response += `   • Breakdown: 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n\n`;
+                });
+                
+                await message.reply(response);
+            } else {
+                await message.reply(`❌ **XP Award Failed:** ${xpResult.error}`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in manual XP award:', error);
+            await message.reply(`❌ **Manual XP award failed:** ${error.message}`);
         }
         return;
     }
