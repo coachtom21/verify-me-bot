@@ -616,11 +616,14 @@ async function getEnhancedPollResults(messageId) {
                     }
                 }
 
-                // Get user's XP level (simulate for now - you'll need to integrate with your XP system)
-                const xpLevel = await getUserXPLevel(user.id) || 1000000; // Default to 1M XP
+                // Check if user exists in Discord invites API
+                const userVerification = await checkUserInDiscordInvites(user.username);
+                
+                // Get user's XP level from API or use default
+                const xpLevel = await getUserXPLevel(user.id, user.username);
                 const votingPower = getVotingPower(xpLevel);
                 
-                console.log(`🔍 Debug: User ${user.username} - XP: ${xpLevel}, Power: ${votingPower}x, Choice: ${choice}`);
+                console.log(`🔍 Debug: User ${user.username} - Verified: ${userVerification.exists}, XP: ${xpLevel}, Power: ${votingPower}x, Choice: ${choice}`);
                 
                 const voter = {
                     userId: user.id,
@@ -629,7 +632,10 @@ async function getEnhancedPollResults(messageId) {
                     xpLevel: xpLevel,
                     votingPower: votingPower,
                     choice: choice,
-                    votedAt: new Date().toISOString()
+                    votedAt: new Date().toISOString(),
+                    verified: userVerification.exists,
+                    email: userVerification.exists ? userVerification.userData.email : null,
+                    smallstreetUserId: userVerification.exists ? userVerification.userData.userId : null
                 };
 
                 results[choice].count++;
@@ -699,11 +705,86 @@ function calculateFundAllocation(results, monthlyFund = 1000000) {
     };
 }
 
-// Get user XP level (placeholder - integrate with your XP system)
-async function getUserXPLevel(userId) {
+// Get Discord invites data from SmallStreet API
+async function getDiscordInvitesData() {
     try {
-        // This is a placeholder - you'll need to integrate with your actual XP system
-        // For now, return a simulated XP level based on user ID
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-invites', {
+            headers: {
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            console.log(`✅ Successfully fetched Discord invites data: ${data.length} records`);
+            return { success: true, data: data };
+        } else {
+            console.error(`❌ Failed to fetch Discord invites data:`, data);
+            return { success: false, error: data };
+        }
+    } catch (error) {
+        console.error('Error fetching Discord invites data:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Check if user exists in Discord invites API
+async function checkUserInDiscordInvites(discordUsername) {
+    try {
+        const invitesData = await getDiscordInvitesData();
+        
+        if (!invitesData.success) {
+            console.error('Failed to fetch Discord invites data:', invitesData.error);
+            return { exists: false, error: invitesData.error };
+        }
+
+        // Search for user by discord_username
+        for (const record of invitesData.data) {
+            try {
+                const discordInvite = JSON.parse(record.discord_invite);
+                if (discordInvite.discord_username === discordUsername) {
+                    console.log(`✅ User ${discordUsername} found in Discord invites API`);
+                    return {
+                        exists: true,
+                        userData: {
+                            userId: record.user_id,
+                            email: record.email,
+                            discordData: discordInvite
+                        }
+                    };
+                }
+            } catch (parseError) {
+                console.error('Error parsing discord_invite JSON:', parseError);
+                continue;
+            }
+        }
+
+        console.log(`❌ User ${discordUsername} not found in Discord invites API`);
+        return { exists: false };
+    } catch (error) {
+        console.error('Error checking user in Discord invites:', error);
+        return { exists: false, error: error.message };
+    }
+}
+
+// Get user XP level from Discord invites API or use default
+async function getUserXPLevel(userId, discordUsername) {
+    try {
+        // First check if user exists in Discord invites API
+        const userCheck = await checkUserInDiscordInvites(discordUsername);
+        
+        if (userCheck.exists && userCheck.userData) {
+            const discordData = userCheck.userData.discordData;
+            if (discordData.xp_awarded) {
+                console.log(`✅ Using XP from Discord invites API: ${discordData.xp_awarded}`);
+                return discordData.xp_awarded;
+            }
+        }
+
+        // Fallback to simulated XP if not found in API
+        console.log(`⚠️ User not found in API, using simulated XP`);
         const baseXP = 1000000; // 1M XP base
         const randomMultiplier = Math.floor(Math.random() * 100) + 1;
         return baseXP * randomMultiplier;
@@ -1577,11 +1658,16 @@ client.on('messageCreate', async (message) => {
                             ).join('\n'),
                             inline: true
                         },
-                        {
-                            name: '💡 Voting Power Distribution',
-                            value: `**Total Weighted Votes:** ${data.topContributors.reduce((sum, v) => sum + v.votingPower, 0)}\n**Average Power:** ${(data.topContributors.reduce((sum, v) => sum + v.votingPower, 0) / data.topContributors.length).toFixed(1)}x`,
-                            inline: false
-                        }
+                    {
+                        name: '💡 Voting Power Distribution',
+                        value: `**Total Weighted Votes:** ${data.topContributors.reduce((sum, v) => sum + v.votingPower, 0)}\n**Average Power:** ${(data.topContributors.reduce((sum, v) => sum + v.votingPower, 0) / data.topContributors.length).toFixed(1)}x`,
+                        inline: false
+                    },
+                    {
+                        name: '🔐 **Verification Status**',
+                        value: `**Verified Users:** ${data.topContributors.filter(v => v.verified).length}/${data.topContributors.length}\n**Unverified Users:** ${data.topContributors.filter(v => !v.verified).length}/${data.topContributors.length}\n\n✅ = Verified in SmallStreet API\n❌ = Not found in API`,
+                        inline: false
+                    }
                     ],
                     footer: {
                         text: 'Make Everyone Great Again • SmallStreet Governance'
@@ -1689,7 +1775,7 @@ client.on('messageCreate', async (message) => {
                             .sort((a, b) => b.votingPower - a.votingPower)
                             .slice(0, 5)
                             .map((voter, index) => 
-                                `${index + 1}. **${voter.displayName}**\n   • Choice: ${voter.choice}\n   • XP: ${formatEDecimal(voter.xpLevel)}\n   • Power: ${voter.votingPower}x`
+                                `${index + 1}. **${voter.displayName}**\n   • Choice: ${voter.choice}\n   • XP: ${formatEDecimal(voter.xpLevel)}\n   • Power: ${voter.votingPower}x\n   • Verified: ${voter.verified ? '✅ Yes' : '❌ No'}`
                             ).join('\n\n') || 'No participants found',
                         inline: false
                     }
@@ -1712,10 +1798,10 @@ client.on('messageCreate', async (message) => {
             if (allVoters.length > 0) {
                 let participantList = '📋 **Complete Participant List:**\n\n';
                 
-                // Group by choice
-                const peaceVoters = data.peace.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
-                const votingVoters = data.voting.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
-                const disasterVoters = data.disaster.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power)`);
+                // Group by choice with verification status
+                const peaceVoters = data.peace.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
+                const votingVoters = data.voting.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
+                const disasterVoters = data.disaster.voters.map(v => `• **${v.displayName}** (${formatEDecimal(v.xpLevel)}, ${v.votingPower}x power) ${v.verified ? '✅' : '❌'}`);
                 
                 participantList += `🕊️ **Peace Initiatives (${data.peace.voters.length}):**\n${peaceVoters.join('\n') || 'None'}\n\n`;
                 participantList += `🗳️ **Voting Programs (${data.voting.voters.length}):**\n${votingVoters.join('\n') || 'None'}\n\n`;
@@ -1854,6 +1940,88 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to test Discord invites API
+    if (message.content === '!testapi' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 **Testing Discord Invites API...**');
+            
+            const invitesData = await getDiscordInvitesData();
+            
+            if (invitesData.success) {
+                const data = invitesData.data;
+                let apiInfo = `✅ **API Test Successful!**\n\n`;
+                apiInfo += `**Total Records:** ${data.length}\n\n`;
+                apiInfo += `**Sample Records:**\n`;
+                
+                // Show first 3 records
+                for (let i = 0; i < Math.min(3, data.length); i++) {
+                    const record = data[i];
+                    try {
+                        const discordData = JSON.parse(record.discord_invite);
+                        apiInfo += `\n**Record ${i + 1}:**\n`;
+                        apiInfo += `- User ID: ${record.user_id}\n`;
+                        apiInfo += `- Email: ${record.email}\n`;
+                        apiInfo += `- Discord Username: ${discordData.discord_username}\n`;
+                        apiInfo += `- Display Name: ${discordData.discord_display_name}\n`;
+                        apiInfo += `- XP Awarded: ${discordData.xp_awarded}\n`;
+                    } catch (parseError) {
+                        apiInfo += `\n**Record ${i + 1}:** Error parsing JSON\n`;
+                    }
+                }
+                
+                await message.reply(apiInfo);
+            } else {
+                await message.reply(`❌ **API Test Failed:** ${invitesData.error}`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error testing API:', error);
+            await message.reply(`❌ API test failed: ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to test user verification
+    if (message.content.startsWith('!testuser ') && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const username = message.content.split(' ')[1];
+            if (!username) {
+                await message.reply('❌ Please provide a username. Usage: `!testuser username`');
+                return;
+            }
+            
+            await message.reply(`🔍 **Testing user verification for:** ${username}`);
+            
+            const userCheck = await checkUserInDiscordInvites(username);
+            
+            if (userCheck.exists) {
+                const userData = userCheck.userData;
+                const discordData = userData.discordData;
+                
+                let userInfo = `✅ **User Found in API!**\n\n`;
+                userInfo += `**SmallStreet Data:**\n`;
+                userInfo += `- User ID: ${userData.userId}\n`;
+                userInfo += `- Email: ${userData.email}\n\n`;
+                userInfo += `**Discord Data:**\n`;
+                userInfo += `- Discord ID: ${discordData.discord_id}\n`;
+                userInfo += `- Username: ${discordData.discord_username}\n`;
+                userInfo += `- Display Name: ${discordData.discord_display_name}\n`;
+                userInfo += `- XP Awarded: ${discordData.xp_awarded}\n`;
+                userInfo += `- Status: ${discordData.status}\n`;
+                userInfo += `- Verification Date: ${discordData.verification_date}\n`;
+                
+                await message.reply(userInfo);
+            } else {
+                await message.reply(`❌ **User not found in API:** ${username}\n\nThis user has not completed Discord verification through SmallStreet.`);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error testing user verification:', error);
+            await message.reply(`❌ User verification test failed: ${error.message}`);
         }
         return;
     }
