@@ -600,6 +600,46 @@ async function updatePollDataXP(pollId, discordId, finalXP) {
     }
 }
 
+// Alternative function to update poll data with final XP rewards
+async function updatePollDataXPAlternative(pollId, discordId, finalXP, email) {
+    try {
+        console.log(`📤 Alternative update XP for poll ${pollId}, user ${discordId}: ${finalXP} XP`);
+
+        // Try to update through the user data API
+        const userUpdateData = {
+            discord_id: discordId,
+            email: email || `${discordId}@discord.local`,
+            xp_awarded: finalXP,
+            poll_id: pollId,
+            update_type: 'poll_xp_update',
+            timestamp: new Date().toISOString()
+        };
+
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(userUpdateData)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Alternative update failed:', response.status, errorText);
+            return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+        }
+
+        const result = await response.json();
+        console.log('✅ Alternative XP update successful:', result);
+        return { success: true, data: result };
+    } catch (error) {
+        console.error('❌ Error in alternative XP update:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 
 // Function to send Discord user data to SmallStreet API
 async function insertUserToSmallStreetUsermeta(userData) {
@@ -1252,8 +1292,18 @@ async function awardPollXP(voters, winningChoice, pollId) {
             // Update database with final XP
             if (pollId) {
                 try {
-                    await updatePollDataXP(pollId, voter.userId, xpAwarded);
-                    console.log(`✅ Updated XP in database for ${voter.username}: ${xpAwarded} XP`);
+                    console.log(`🔄 Updating database for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                    const updateResult = await updatePollDataXP(pollId, voter.userId, xpAwarded);
+                    
+                    if (updateResult.success) {
+                        console.log(`✅ Database updated successfully for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                    } else {
+                        console.error(`❌ Database update failed for ${voter.username}:`, updateResult.error);
+                        
+                        // Try alternative update method
+                        console.log(`🔄 Trying alternative database update for ${voter.username}...`);
+                        await updatePollDataXPAlternative(pollId, voter.userId, xpAwarded, voter.email);
+                    }
                 } catch (updateError) {
                     console.error(`❌ Failed to update XP in database for ${voter.username}:`, updateError);
                 }
@@ -2362,6 +2412,90 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('❌ Error in participation command:', error);
             await message.reply(`❌ **Participation analysis failed:** ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to force update XP in database
+    if (message.content === '!forceupdatexp' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🔄 **Force updating XP in database for latest poll...**');
+            
+            // Find latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found.** Create a poll first with `!createpoll`');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const messageId = latestPoll.id;
+            
+            // Get poll results
+            const results = await getEnhancedPollResults(messageId);
+            if (!results.success) {
+                await message.reply(`❌ **Failed to get poll data:** ${results.error}`);
+                return;
+            }
+            
+            const data = results.data;
+            const allVoters = [...data.peace.voters, ...data.voting.voters, ...data.disaster.voters];
+            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            let updateResults = [];
+            
+            // Force update each voter's XP
+            for (const voter of allVoters) {
+                const xpAwarded = calculatePollXP(voter, winningChoice);
+                const isWinner = voter.choice === winningChoice;
+                const isTopContributor = voter.votingPower >= 25;
+                
+                console.log(`🔄 Force updating ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                
+                // Try primary update method
+                let updateResult = await updatePollDataXP(messageId, voter.userId, xpAwarded);
+                
+                if (!updateResult.success) {
+                    console.log(`🔄 Primary update failed, trying alternative for ${voter.username}...`);
+                    updateResult = await updatePollDataXPAlternative(messageId, voter.userId, xpAwarded, voter.email);
+                }
+                
+                updateResults.push({
+                    username: voter.username,
+                    xpAwarded: xpAwarded,
+                    isWinner: isWinner,
+                    isTopContributor: isTopContributor,
+                    updateSuccess: updateResult.success,
+                    updateError: updateResult.error
+                });
+            }
+            
+            // Show results
+            let response = `🔄 **Force Update Results:**\n\n`;
+            response += `**Poll ID:** \`${messageId}\`\n`;
+            response += `**Winning Choice:** ${winningChoice}\n\n`;
+            
+            response += `**Update Results:**\n`;
+            updateResults.forEach((result, index) => {
+                response += `${index + 1}. **${result.username}**: ${formatEDecimal(result.xpAwarded)} XP\n`;
+                response += `   • Choice: ${result.isWinner ? 'Winner ✅' : 'Non-winner'}\n`;
+                response += `   • Top Contributor: ${result.isTopContributor ? 'Yes ✅' : 'No'}\n`;
+                response += `   • Update: ${result.updateSuccess ? '✅ Success' : `❌ Failed (${result.updateError})`}\n\n`;
+            });
+            
+            await message.reply(response);
+            
+        } catch (error) {
+            console.error('❌ Error in force update XP:', error);
+            await message.reply(`❌ **Force update failed:** ${error.message}`);
         }
         return;
     }
