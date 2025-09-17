@@ -26,6 +26,273 @@ app.get('/', (req, res) => {
     });
 });
 
+// API endpoint to get poll awarded XP data from SmallStreet API
+app.get('/api/poll-xp/:pollId', async (req, res) => {
+    try {
+        const { pollId } = req.params;
+        const { includeBreakdown = 'true' } = req.query;
+        
+        console.log(`📊 API Request: Getting XP data for poll ${pollId}`);
+        
+        // Fetch poll data from SmallStreet API
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/get-discord-poll', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        if (!response.ok) {
+            return res.status(404).json({
+                success: false,
+                error: `HTTP ${response.status}`,
+                message: 'Failed to fetch poll data from SmallStreet API'
+            });
+        }
+
+        const allPollData = await response.json();
+        
+        // Filter data for the specific poll ID
+        const pollData = allPollData.filter(item => {
+            try {
+                const discordPoll = JSON.parse(item.discord_poll);
+                return discordPoll.poll_id === pollId;
+            } catch (error) {
+                console.error('Error parsing discord_poll JSON:', error);
+                return false;
+            }
+        });
+
+        if (pollData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Poll not found',
+                message: `No data found for poll ID: ${pollId}`
+            });
+        }
+
+        // Process the poll data
+        const processedData = pollData.map(item => {
+            const discordPoll = JSON.parse(item.discord_poll);
+            
+            // Get user's XP level for voting power calculation
+            const xpLevel = discordPoll.xp_awarded || 1000000; // Use awarded XP as current level
+            const votingPower = getVotingPower(xpLevel);
+            
+            // Determine if this is a winner (we'll need to calculate this based on vote counts)
+            const isWinner = false; // Will be calculated below
+            const isTopContributor = votingPower >= 25;
+            
+            return {
+                user_id: item.user_id,
+                user_login: item.user_login,
+                email: item.email,
+                discord_id: discordPoll.discord_id,
+                username: discordPoll.username,
+                display_name: discordPoll.display_name,
+                vote: discordPoll.vote,
+                vote_type: discordPoll.vote_type,
+                status: discordPoll.status,
+                submitted_at: discordPoll.submitted_at,
+                membership: discordPoll.membership,
+                xp_awarded: discordPoll.xp_awarded,
+                xp_level: xpLevel,
+                voting_power: votingPower,
+                is_top_contributor: isTopContributor
+            };
+        });
+
+        // Calculate vote counts to determine winner
+        const voteCounts = processedData.reduce((acc, voter) => {
+            acc[voter.vote] = (acc[voter.vote] || 0) + 1;
+            return acc;
+        }, {});
+
+        const weightedVotes = processedData.reduce((acc, voter) => {
+            acc[voter.vote] = (acc[voter.vote] || 0) + voter.voting_power;
+            return acc;
+        }, {});
+
+        // Determine winning choice based on weighted votes
+        const winningChoice = Object.keys(weightedVotes).reduce((a, b) => 
+            weightedVotes[a] > weightedVotes[b] ? a : b
+        );
+
+        // Update winner status
+        processedData.forEach(voter => {
+            voter.is_winner = voter.vote === winningChoice;
+        });
+
+        // Calculate total XP awarded (including bonuses)
+        const xpData = processedData.map(voter => {
+            const baseXP = 1000000;
+            const winningBonus = voter.is_winner ? 5000000 : 0;
+            const topContributorBonus = voter.is_top_contributor ? 10000000 : 0;
+            const totalXPAwarded = baseXP + winningBonus + topContributorBonus;
+
+            const voterData = {
+                ...voter,
+                total_xp_awarded: totalXPAwarded,
+                xp_breakdown: includeBreakdown === 'true' ? {
+                    base: baseXP,
+                    winning_bonus: winningBonus,
+                    top_contributor_bonus: topContributorBonus,
+                    total: totalXPAwarded
+                } : undefined
+            };
+
+            return voterData;
+        });
+
+        // Sort by total XP awarded (highest first)
+        xpData.sort((a, b) => b.total_xp_awarded - a.total_xp_awarded);
+
+        const response_data = {
+            success: true,
+            poll_id: pollId,
+            poll_summary: {
+                total_participants: processedData.length,
+                winning_choice: winningChoice,
+                vote_counts: voteCounts,
+                weighted_votes: weightedVotes
+            },
+            xp_awards: xpData,
+            total_xp_awarded: xpData.reduce((sum, voter) => sum + voter.total_xp_awarded, 0),
+            timestamp: new Date().toISOString()
+        };
+
+        console.log(`✅ API Response: Retrieved XP data for ${xpData.length} participants in poll ${pollId}`);
+        res.json(response_data);
+
+    } catch (error) {
+        console.error('❌ API Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Internal server error while retrieving poll XP data'
+        });
+    }
+});
+
+// API endpoint to get all polls with XP summary
+app.get('/api/polls-xp', async (req, res) => {
+    try {
+        console.log(`📊 API Request: Getting all polls XP summary`);
+        
+        // Fetch all poll data from SmallStreet API
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/get-discord-poll', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        if (!response.ok) {
+            return res.status(500).json({
+                success: false,
+                error: `HTTP ${response.status}`,
+                message: 'Failed to fetch poll data from SmallStreet API'
+            });
+        }
+
+        const allPollData = await response.json();
+        
+        // Group data by poll_id
+        const pollsMap = {};
+        
+        allPollData.forEach(item => {
+            try {
+                const discordPoll = JSON.parse(item.discord_poll);
+                const pollId = discordPoll.poll_id;
+                
+                if (!pollsMap[pollId]) {
+                    pollsMap[pollId] = {
+                        poll_id: pollId,
+                        participants: [],
+                        vote_counts: {},
+                        weighted_votes: {},
+                        total_xp_awarded: 0
+                    };
+                }
+                
+                const xpLevel = discordPoll.xp_awarded || 1000000;
+                const votingPower = getVotingPower(xpLevel);
+                const isTopContributor = votingPower >= 25;
+                
+                const participant = {
+                    user_id: item.user_id,
+                    email: item.email,
+                    discord_id: discordPoll.discord_id,
+                    username: discordPoll.username,
+                    display_name: discordPoll.display_name,
+                    vote: discordPoll.vote,
+                    membership: discordPoll.membership,
+                    xp_awarded: discordPoll.xp_awarded,
+                    voting_power: votingPower,
+                    is_top_contributor: isTopContributor,
+                    submitted_at: discordPoll.submitted_at
+                };
+                
+                pollsMap[pollId].participants.push(participant);
+                
+                // Update vote counts
+                pollsMap[pollId].vote_counts[discordPoll.vote] = (pollsMap[pollId].vote_counts[discordPoll.vote] || 0) + 1;
+                pollsMap[pollId].weighted_votes[discordPoll.vote] = (pollsMap[pollId].weighted_votes[discordPoll.vote] || 0) + votingPower;
+                
+            } catch (error) {
+                console.error('Error parsing discord_poll JSON:', error);
+            }
+        });
+        
+        // Calculate winning choices and total XP for each poll
+        const polls = Object.values(pollsMap).map(poll => {
+            const winningChoice = Object.keys(poll.weighted_votes).reduce((a, b) => 
+                poll.weighted_votes[a] > poll.weighted_votes[b] ? a : b
+            );
+            
+            // Calculate total XP awarded for this poll
+            const totalXP = poll.participants.reduce((sum, participant) => {
+                const baseXP = 1000000;
+                const winningBonus = participant.vote === winningChoice ? 5000000 : 0;
+                const topContributorBonus = participant.is_top_contributor ? 10000000 : 0;
+                return sum + baseXP + winningBonus + topContributorBonus;
+            }, 0);
+            
+            return {
+                ...poll,
+                winning_choice: winningChoice,
+                total_xp_awarded: totalXP,
+                participant_count: poll.participants.length
+            };
+        });
+        
+        // Sort polls by most recent (assuming poll_id contains timestamp)
+        polls.sort((a, b) => b.poll_id.localeCompare(a.poll_id));
+        
+        const response_data = {
+            success: true,
+            polls: polls,
+            total_polls: polls.length,
+            timestamp: new Date().toISOString()
+        };
+        
+        console.log(`✅ API Response: Retrieved summary for ${polls.length} polls`);
+        res.json(response_data);
+
+    } catch (error) {
+        console.error('❌ API Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Internal server error while retrieving polls XP data'
+        });
+    }
+});
+
 // Create Discord client
 const client = new Client({
     intents: [
@@ -967,6 +1234,8 @@ async function awardPollXP(voters, winningChoice, pollId) {
         
         for (const voter of voters) {
             const xpAwarded = calculatePollXP(voter, winningChoice);
+            
+            console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 1M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
             
             // Award XP (integrate with your XP system)
             await addXpEvent(voter.userId, 'POLL_PARTICIPATION', xpAwarded, {
