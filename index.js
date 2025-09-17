@@ -2765,9 +2765,9 @@ client.on('messageCreate', async (message) => {
     }
     
     // Handle command to check API data after update
-    if (message.content === '!checkapi' && message.author.id === process.env.ADMIN_USER_ID) {
+    if (message.content.startsWith('!checkapi') && message.author.id === process.env.ADMIN_USER_ID) {
         try {
-            await message.reply('🔍 **Checking API data after XP update...**');
+            await message.reply('🔍 **Checking API data...**');
             
             // Fetch current API data
             const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/get-discord-poll', {
@@ -2786,33 +2786,121 @@ client.on('messageCreate', async (message) => {
 
             const apiData = await response.json();
             
-            // Find latest poll data
-            const latestPollId = '1417818600240320543'; // From your example
-            const pollData = apiData.filter(item => {
-                try {
-                    const discordPoll = JSON.parse(item.discord_poll);
-                    return discordPoll.poll_id === latestPollId;
-                } catch (error) {
-                    return false;
-                }
-            });
-
-            let responseText = `🔍 **API Data Check for Poll ${latestPollId}:**\n\n`;
+            // Parse command arguments
+            const args = message.content.split(' ').slice(1);
+            const specificPollId = args[0];
             
-            if (pollData.length === 0) {
-                responseText += '❌ **No data found for this poll in API**';
-            } else {
-                responseText += `**Found ${pollData.length} records:**\n\n`;
-                
-                pollData.forEach((item, index) => {
-                    const discordPoll = JSON.parse(item.discord_poll);
-                    responseText += `${index + 1}. **${discordPoll.username}**\n`;
-                    responseText += `   • Email: ${item.email}\n`;
-                    responseText += `   • Vote: ${discordPoll.vote}\n`;
-                    responseText += `   • XP Awarded: ${formatEDecimal(discordPoll.xp_awarded)} (${discordPoll.xp_awarded.toLocaleString()})\n`;
-                    responseText += `   • Status: ${discordPoll.status}\n`;
-                    responseText += `   • Submitted: ${discordPoll.submitted_at}\n\n`;
+            let responseText = '';
+            
+            if (specificPollId) {
+                // Check specific poll
+                const pollData = apiData.filter(item => {
+                    try {
+                        const discordPoll = JSON.parse(item.discord_poll);
+                        return discordPoll.poll_id === specificPollId;
+                    } catch (error) {
+                        return false;
+                    }
                 });
+
+                responseText = `🔍 **API Data Check for Poll ${specificPollId}:**\n\n`;
+                
+                if (pollData.length === 0) {
+                    responseText += '❌ **No data found for this poll in API**\n\n';
+                    responseText += '**Available polls:**\n';
+                    
+                    // Show available polls
+                    const allPolls = new Set();
+                    apiData.forEach(item => {
+                        try {
+                            const discordPoll = JSON.parse(item.discord_poll);
+                            allPolls.add(discordPoll.poll_id);
+                        } catch (error) {
+                            // Skip invalid entries
+                        }
+                    });
+                    
+                    const sortedPolls = Array.from(allPolls).sort((a, b) => b.localeCompare(a));
+                    sortedPolls.slice(0, 10).forEach(pollId => {
+                        responseText += `• ${pollId}\n`;
+                    });
+                    
+                    if (sortedPolls.length > 10) {
+                        responseText += `• ... and ${sortedPolls.length - 10} more polls\n`;
+                    }
+                } else {
+                    responseText += `**Found ${pollData.length} records:**\n\n`;
+                    
+                    pollData.forEach((item, index) => {
+                        const discordPoll = JSON.parse(item.discord_poll);
+                        responseText += `${index + 1}. **${discordPoll.username}**\n`;
+                        responseText += `   • Email: ${item.email}\n`;
+                        responseText += `   • Vote: ${discordPoll.vote}\n`;
+                        responseText += `   • XP Awarded: ${formatEDecimal(discordPoll.xp_awarded)} (${discordPoll.xp_awarded.toLocaleString()})\n`;
+                        responseText += `   • Status: ${discordPoll.status}\n`;
+                        responseText += `   • Submitted: ${discordPoll.submitted_at}\n\n`;
+                    });
+                }
+            } else {
+                // Auto-check the most recent poll
+                const allPolls = new Set();
+                apiData.forEach(item => {
+                    try {
+                        const discordPoll = JSON.parse(item.discord_poll);
+                        allPolls.add(discordPoll.poll_id);
+                    } catch (error) {
+                        // Skip invalid entries
+                    }
+                });
+                
+                const sortedPolls = Array.from(allPolls).sort((a, b) => b.localeCompare(a));
+                
+                if (sortedPolls.length === 0) {
+                    responseText = '❌ **No poll data found in API**';
+                } else {
+                    // Get the most recent poll ID
+                    const mostRecentPollId = sortedPolls[0];
+                    
+                    // Check the most recent poll
+                    const pollData = apiData.filter(item => {
+                        try {
+                            const discordPoll = JSON.parse(item.discord_poll);
+                            return discordPoll.poll_id === mostRecentPollId;
+                        } catch (error) {
+                            return false;
+                        }
+                    });
+
+                    responseText = `🔍 **API Data Check for Most Recent Poll ${mostRecentPollId}:**\n\n`;
+                    
+                    if (pollData.length === 0) {
+                        responseText += '❌ **No data found for this poll in API**';
+                    } else {
+                        responseText += `**Found ${pollData.length} records:**\n\n`;
+                        
+                        pollData.forEach((item, index) => {
+                            const discordPoll = JSON.parse(item.discord_poll);
+                            responseText += `${index + 1}. **${discordPoll.username}**\n`;
+                            responseText += `   • Email: ${item.email}\n`;
+                            responseText += `   • Vote: ${discordPoll.vote}\n`;
+                            responseText += `   • XP Awarded: ${formatEDecimal(discordPoll.xp_awarded)} (${discordPoll.xp_awarded.toLocaleString()})\n`;
+                            responseText += `   • Status: ${discordPoll.status}\n`;
+                            responseText += `   • Submitted: ${discordPoll.submitted_at}\n\n`;
+                        });
+                    }
+                    
+                    // Add summary of other polls
+                    if (sortedPolls.length > 1) {
+                        responseText += `\n📊 **Other polls available:**\n`;
+                        sortedPolls.slice(1, 6).forEach(pollId => {
+                            responseText += `• ${pollId}\n`;
+                        });
+                        if (sortedPolls.length > 6) {
+                            responseText += `• ... and ${sortedPolls.length - 6} more polls\n`;
+                        }
+                        responseText += `\n💡 **Usage:** \`!checkapi <poll_id>\` to check specific poll details`;
+                    }
+                }
             }
             
             await message.reply(responseText);
