@@ -567,13 +567,17 @@ async function storePollData(pollData) {
 // Function to update poll data with final XP rewards
 async function updatePollDataXP(pollId, discordId, finalXP) {
     try {
-        console.log(`📤 Updating XP for poll ${pollId}, user ${discordId}: ${finalXP} XP`);
+        console.log(`📤 Updating XP for poll ${pollId}, user ${discordId}: ${formatEDecimal(finalXP)} (${finalXP.toLocaleString()}) XP`);
 
         const updateData = {
             poll_id: pollId,
             discord_id: discordId,
-            xp_awarded: finalXP
+            xp_awarded: finalXP,
+            update_type: 'final_xp_award',
+            timestamp: new Date().toISOString()
         };
+
+        console.log(`📤 Update data:`, JSON.stringify(updateData, null, 2));
 
         const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll-update', {
             method: 'POST',
@@ -585,13 +589,22 @@ async function updatePollDataXP(pollId, discordId, finalXP) {
             body: JSON.stringify(updateData)
         });
 
+        const responseText = await response.text();
+        console.log(`📥 Update response: ${response.status} - ${responseText}`);
+
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Failed to update poll XP:', response.status, errorText);
-            return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+            console.error('❌ Failed to update poll XP:', response.status, responseText);
+            return { success: false, error: `HTTP ${response.status}: ${responseText}` };
         }
 
-        const result = await response.json();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            console.log('📥 Response is not JSON, treating as plain text');
+            result = { message: responseText };
+        }
+
         console.log('✅ Poll XP updated successfully:', result);
         console.log('📊 Update response details:', JSON.stringify(result, null, 2));
         return { success: true, data: result };
@@ -637,6 +650,62 @@ async function updatePollDataXPAlternative(pollId, discordId, finalXP, email) {
         return { success: true, data: result };
     } catch (error) {
         console.error('❌ Error in alternative XP update:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Direct database update by creating a new poll entry with final XP
+async function updatePollDataDirect(pollId, discordId, finalXP, email, username) {
+    try {
+        console.log(`📤 Direct update XP for poll ${pollId}, user ${discordId}: ${finalXP} XP`);
+
+        // Create a new poll entry with the final XP amount
+        const directUpdateData = {
+            poll_id: pollId,
+            email: email || `${discordId}@discord.local`,
+            vote: 'update', // Special vote type for updates
+            vote_type: 'xp_update',
+            discord_id: discordId,
+            username: username,
+            display_name: username,
+            membership: 'verified',
+            xp_awarded: finalXP,
+            status: 'updated',
+            submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
+            update_type: 'final_xp_award'
+        };
+
+        console.log(`📤 Direct update data:`, JSON.stringify(directUpdateData, null, 2));
+
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(directUpdateData)
+        });
+
+        const responseText = await response.text();
+        console.log(`📥 Direct update response: ${response.status} - ${responseText}`);
+
+        if (!response.ok) {
+            console.error('❌ Direct update failed:', response.status, responseText);
+            return { success: false, error: `HTTP ${response.status}: ${responseText}` };
+        }
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            result = { message: responseText };
+        }
+
+        console.log('✅ Direct XP update successful:', result);
+        return { success: true, data: result };
+    } catch (error) {
+        console.error('❌ Error in direct XP update:', error);
         return { success: false, error: error.message };
     }
 }
@@ -1076,7 +1145,7 @@ async function getEnhancedPollResults(messageId) {
                 
                 console.log(`🔍 Debug: User ${user.username} - Base XP: ${baseXP}, Choice: ${choice}, Voting Power: ${votingPower}`);
                 
-                // Store individual vote in database
+                // Store individual vote in database with base XP (will be updated later with final amount)
                 const voteData = {
                     poll_id: messageId,
                     email: userVerification.exists ? userVerification.userData.email : `${user.username}@discord.local`,
@@ -1086,7 +1155,9 @@ async function getEnhancedPollResults(messageId) {
                     username: user.username,
                     display_name: member.displayName,
                     membership: userVerification.exists ? 'verified' : 'unverified',
-                    xp_awarded: baseXP // Base XP for voting
+                    xp_awarded: baseXP, // Base XP for voting (will be updated to final amount)
+                    status: 'submitted',
+                    submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', '')
                 };
                 
                 try {
@@ -1290,21 +1361,51 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 }
             });
             
-            // Update database with final XP
+            // Update database with final XP using multiple methods
             if (pollId) {
+                let updateSuccess = false;
+                let updateError = null;
+                
                 try {
                     console.log(`🔄 Updating database for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                    
+                    // Method 1: Primary update
                     const updateResult = await updatePollDataXP(pollId, voter.userId, xpAwarded);
                     
                     if (updateResult.success) {
                         console.log(`✅ Database updated successfully for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                        updateSuccess = true;
                     } else {
-                        console.error(`❌ Database update failed for ${voter.username}:`, updateResult.error);
+                        console.error(`❌ Primary update failed for ${voter.username}:`, updateResult.error);
+                        updateError = updateResult.error;
                         
-                        // Try alternative update method
+                        // Method 2: Alternative update
                         console.log(`🔄 Trying alternative database update for ${voter.username}...`);
-                        await updatePollDataXPAlternative(pollId, voter.userId, xpAwarded, voter.email);
+                        const altResult = await updatePollDataXPAlternative(pollId, voter.userId, xpAwarded, voter.email);
+                        
+                        if (altResult.success) {
+                            console.log(`✅ Alternative update successful for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                            updateSuccess = true;
+                        } else {
+                            console.error(`❌ Alternative update failed for ${voter.username}:`, altResult.error);
+                            
+                            // Method 3: Direct database update via new poll entry
+                            console.log(`🔄 Trying direct database update for ${voter.username}...`);
+                            const directResult = await updatePollDataDirect(pollId, voter.userId, xpAwarded, voter.email, voter.username);
+                            
+                            if (directResult.success) {
+                                console.log(`✅ Direct update successful for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
+                                updateSuccess = true;
+                            } else {
+                                console.error(`❌ All update methods failed for ${voter.username}`);
+                            }
+                        }
                     }
+                    
+                    if (!updateSuccess) {
+                        console.error(`❌ All database update methods failed for ${voter.username}. Final XP: ${formatEDecimal(xpAwarded)}`);
+                    }
+                    
                 } catch (updateError) {
                     console.error(`❌ Failed to update XP in database for ${voter.username}:`, updateError);
                 }
@@ -2547,6 +2648,100 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('❌ Error testing update:', error);
             await message.reply(`❌ **Test failed:** ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to verify XP updates
+    if (message.content === '!verifyxp' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🔍 **Verifying XP updates for latest poll...**');
+            
+            // Find latest poll
+            const messages = await message.channel.messages.fetch({ limit: 50 });
+            const pollMessages = messages.filter(msg => 
+                msg.author.id === client.user.id && 
+                msg.embeds.length > 0 &&
+                msg.embeds[0].title && 
+                msg.embeds[0].title.includes('Monthly Resource Allocation Vote')
+            );
+            
+            if (pollMessages.size === 0) {
+                await message.reply('❌ **No poll found.** Create a poll first with `!createpoll`');
+                return;
+            }
+            
+            const latestPoll = pollMessages.first();
+            const messageId = latestPoll.id;
+            
+            // Get poll results
+            const results = await getEnhancedPollResults(messageId);
+            if (!results.success) {
+                await message.reply(`❌ **Failed to get poll data:** ${results.error}`);
+                return;
+            }
+            
+            const data = results.data;
+            const allVoters = [...data.peace.voters, ...data.voting.voters, ...data.disaster.voters];
+            const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                                data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+            
+            // Fetch current API data
+            const apiResponse = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/get-discord-poll', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+
+            if (!apiResponse.ok) {
+                await message.reply(`❌ **Failed to fetch API data:** ${apiResponse.status}`);
+                return;
+            }
+
+            const apiData = await apiResponse.json();
+            const pollData = apiData.filter(item => {
+                try {
+                    const discordPoll = JSON.parse(item.discord_poll);
+                    return discordPoll.poll_id === messageId;
+                } catch (error) {
+                    return false;
+                }
+            });
+            
+            let response = `🔍 **XP Verification for Poll ${messageId}:**\n\n`;
+            response += `**Winning Choice:** ${winningChoice}\n\n`;
+            
+            // Compare calculated XP with API data
+            allVoters.forEach((voter, index) => {
+                const calculatedXP = calculatePollXP(voter, winningChoice);
+                const isWinner = voter.choice === winningChoice;
+                const isTopContributor = voter.votingPower >= 25;
+                
+                // Find corresponding API data
+                const apiVoter = pollData.find(item => {
+                    const discordPoll = JSON.parse(item.discord_poll);
+                    return discordPoll.discord_id == voter.userId;
+                });
+                
+                const apiXP = apiVoter ? JSON.parse(apiVoter.discord_poll).xp_awarded : 0;
+                const xpMatch = calculatedXP === apiXP;
+                
+                response += `${index + 1}. **${voter.username}**\n`;
+                response += `   • Choice: ${voter.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
+                response += `   • Calculated XP: ${formatEDecimal(calculatedXP)}\n`;
+                response += `   • API XP: ${formatEDecimal(apiXP)}\n`;
+                response += `   • Match: ${xpMatch ? '✅' : '❌'}\n`;
+                response += `   • Breakdown: 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n\n`;
+            });
+            
+            await message.reply(response);
+            
+        } catch (error) {
+            console.error('❌ Error verifying XP:', error);
+            await message.reply(`❌ **XP verification failed:** ${error.message}`);
         }
         return;
     }
