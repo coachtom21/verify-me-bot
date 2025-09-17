@@ -1047,9 +1047,9 @@ function getChoiceFromEmoji(emoji) {
 
 // Format e-decimal notation
 function formatEDecimal(xp) {
-    if (xp === 0) return 'e-0';
+    if (xp === 0) return 'e+0';
     const exp = Math.floor(Math.log10(Math.abs(xp)));
-    return `e-${exp}`;
+    return `e+${exp}`;
 }
 
 // Enhanced poll results processing with weighted voting
@@ -2876,16 +2876,57 @@ client.on('messageCreate', async (message) => {
                     if (pollData.length === 0) {
                         responseText += '❌ **No data found for this poll in API**';
                     } else {
-                        responseText += `**Found ${pollData.length} records:**\n\n`;
-                        
-                        pollData.forEach((item, index) => {
+                        // Group by user and prioritize final XP entries
+                        const userData = {};
+                        pollData.forEach(item => {
                             const discordPoll = JSON.parse(item.discord_poll);
-                            responseText += `${index + 1}. **${discordPoll.username}**\n`;
-                            responseText += `   • Email: ${item.email}\n`;
-                            responseText += `   • Vote: ${discordPoll.vote}\n`;
-                            responseText += `   • XP Awarded: ${formatEDecimal(discordPoll.xp_awarded)} (${discordPoll.xp_awarded.toLocaleString()})\n`;
-                            responseText += `   • Status: ${discordPoll.status}\n`;
-                            responseText += `   • Submitted: ${discordPoll.submitted_at}\n\n`;
+                            const userId = discordPoll.discord_id;
+                            
+                            if (!userData[userId]) {
+                                userData[userId] = {
+                                    username: discordPoll.username,
+                                    email: item.email,
+                                    vote: discordPoll.vote,
+                                    records: []
+                                };
+                            }
+                            
+                            userData[userId].records.push({
+                                xp_awarded: discordPoll.xp_awarded,
+                                status: discordPoll.status,
+                                vote_type: discordPoll.vote_type,
+                                submitted_at: discordPoll.submitted_at,
+                                is_final: discordPoll.vote_type === 'xp_final_award' || discordPoll.status === 'final_awarded'
+                            });
+                        });
+                        
+                        // Sort records by priority (final entries first)
+                        Object.values(userData).forEach(user => {
+                            user.records.sort((a, b) => {
+                                if (a.is_final && !b.is_final) return -1;
+                                if (!a.is_final && b.is_final) return 1;
+                                return new Date(b.submitted_at) - new Date(a.submitted_at);
+                            });
+                        });
+                        
+                        responseText += `**Found ${Object.keys(userData).length} unique users:**\n\n`;
+                        
+                        Object.values(userData).forEach((user, index) => {
+                            const finalRecord = user.records.find(r => r.is_final) || user.records[0];
+                            const isWinner = finalRecord.xp_awarded > 1000000;
+                            
+                            responseText += `${index + 1}. **${user.username}**\n`;
+                            responseText += `   • Email: ${user.email}\n`;
+                            responseText += `   • Vote: ${user.vote}\n`;
+                            responseText += `   • Final XP: ${formatEDecimal(finalRecord.xp_awarded)} (${finalRecord.xp_awarded.toLocaleString()})\n`;
+                            responseText += `   • Status: ${finalRecord.status} ${isWinner ? '🏆 (Winner!)' : ''}\n`;
+                            responseText += `   • Type: ${finalRecord.vote_type}\n`;
+                            responseText += `   • Submitted: ${finalRecord.submitted_at}\n`;
+                            
+                            if (user.records.length > 1) {
+                                responseText += `   • Total Records: ${user.records.length} (showing final)\n`;
+                            }
+                            responseText += `\n`;
                         });
                     }
                     
