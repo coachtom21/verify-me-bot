@@ -565,35 +565,44 @@ async function storePollData(pollData) {
 }
 
 // Function to update poll data with final XP rewards
+// Since discord-poll-update endpoint doesn't exist, we'll create a new entry with final XP
 async function updatePollDataXP(pollId, discordId, finalXP) {
     try {
-        console.log(`📤 Updating XP for poll ${pollId}, user ${discordId}: ${formatEDecimal(finalXP)} (${finalXP.toLocaleString()}) XP`);
+        console.log(`📤 Creating new poll entry with final XP for poll ${pollId}, user ${discordId}: ${formatEDecimal(finalXP)} (${finalXP.toLocaleString()}) XP`);
 
-        const updateData = {
+        // Create a new poll entry with the final XP amount
+        const finalXPData = {
             poll_id: pollId,
+            email: `${discordId}@discord.local`, // We'll need to get the actual email
+            vote: 'final_xp_update', // Special vote type for final XP
+            vote_type: 'xp_final_award',
             discord_id: discordId,
+            username: 'system_update',
+            display_name: 'System Update',
+            membership: 'verified',
             xp_awarded: finalXP,
-            update_type: 'final_xp_award',
-            timestamp: new Date().toISOString()
+            status: 'final_awarded',
+            submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
+            update_type: 'final_xp_award'
         };
 
-        console.log(`📤 Update data:`, JSON.stringify(updateData, null, 2));
+        console.log(`📤 Final XP data:`, JSON.stringify(finalXPData, null, 2));
 
-        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll-update', {
+        const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
-            body: JSON.stringify(updateData)
+            body: JSON.stringify(finalXPData)
         });
 
         const responseText = await response.text();
-        console.log(`📥 Update response: ${response.status} - ${responseText}`);
+        console.log(`📥 Final XP response: ${response.status} - ${responseText}`);
 
         if (!response.ok) {
-            console.error('❌ Failed to update poll XP:', response.status, responseText);
+            console.error('❌ Failed to create final XP entry:', response.status, responseText);
             return { success: false, error: `HTTP ${response.status}: ${responseText}` };
         }
 
@@ -605,11 +614,11 @@ async function updatePollDataXP(pollId, discordId, finalXP) {
             result = { message: responseText };
         }
 
-        console.log('✅ Poll XP updated successfully:', result);
-        console.log('📊 Update response details:', JSON.stringify(result, null, 2));
+        console.log('✅ Final XP entry created successfully:', result);
+        console.log('📊 Final XP response details:', JSON.stringify(result, null, 2));
         return { success: true, data: result };
     } catch (error) {
-        console.error('❌ Error updating poll XP:', error);
+        console.error('❌ Error creating final XP entry:', error);
         return { success: false, error: error.message };
     }
 }
@@ -663,14 +672,14 @@ async function updatePollDataDirect(pollId, discordId, finalXP, email, username)
         const directUpdateData = {
             poll_id: pollId,
             email: email || `${discordId}@discord.local`,
-            vote: 'update', // Special vote type for updates
-            vote_type: 'xp_update',
+            vote: 'final_xp_award', // Special vote type for final XP awards
+            vote_type: 'xp_final_award',
             discord_id: discordId,
             username: username,
             display_name: username,
             membership: 'verified',
             xp_awarded: finalXP,
-            status: 'updated',
+            status: 'final_awarded',
             submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
             update_type: 'final_xp_award'
         };
@@ -2720,19 +2729,28 @@ client.on('messageCreate', async (message) => {
                 const isWinner = voter.choice === winningChoice;
                 const isTopContributor = voter.votingPower >= 25;
                 
-                // Find corresponding API data
-                const apiVoter = pollData.find(item => {
+                // Find corresponding API data - look for both original and final XP entries
+                const originalApiVoter = pollData.find(item => {
                     const discordPoll = JSON.parse(item.discord_poll);
-                    return discordPoll.discord_id == voter.userId;
+                    return discordPoll.discord_id == voter.userId && discordPoll.vote_type === 'monthly_poll';
                 });
                 
-                const apiXP = apiVoter ? JSON.parse(apiVoter.discord_poll).xp_awarded : 0;
+                const finalApiVoter = pollData.find(item => {
+                    const discordPoll = JSON.parse(item.discord_poll);
+                    return discordPoll.discord_id == voter.userId && discordPoll.vote_type === 'xp_final_award';
+                });
+                
+                const originalXP = originalApiVoter ? JSON.parse(originalApiVoter.discord_poll).xp_awarded : 0;
+                const finalXP = finalApiVoter ? JSON.parse(finalApiVoter.discord_poll).xp_awarded : 0;
+                const apiXP = finalXP || originalXP; // Use final XP if available, otherwise original
                 const xpMatch = calculatedXP === apiXP;
                 
                 response += `${index + 1}. **${voter.username}**\n`;
                 response += `   • Choice: ${voter.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
                 response += `   • Calculated XP: ${formatEDecimal(calculatedXP)}\n`;
-                response += `   • API XP: ${formatEDecimal(apiXP)}\n`;
+                response += `   • Original API XP: ${formatEDecimal(originalXP)}\n`;
+                response += `   • Final API XP: ${formatEDecimal(finalXP)}\n`;
+                response += `   • Using: ${finalXP ? 'Final' : 'Original'}\n`;
                 response += `   • Match: ${xpMatch ? '✅' : '❌'}\n`;
                 response += `   • Breakdown: 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n\n`;
             });
