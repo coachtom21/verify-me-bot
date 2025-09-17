@@ -593,6 +593,7 @@ async function updatePollDataXP(pollId, discordId, finalXP) {
 
         const result = await response.json();
         console.log('✅ Poll XP updated successfully:', result);
+        console.log('📊 Update response details:', JSON.stringify(result, null, 2));
         return { success: true, data: result };
     } catch (error) {
         console.error('❌ Error updating poll XP:', error);
@@ -2496,6 +2497,116 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('❌ Error in force update XP:', error);
             await message.reply(`❌ **Force update failed:** ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to test database update directly
+    if (message.content === '!testupdate' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🧪 **Testing database update API directly...**');
+            
+            const testData = {
+                poll_id: '1417818600240320543',
+                discord_id: 1087338986047033364, // Gokarna's Discord ID
+                xp_awarded: 6000000 // 6M XP
+            };
+            
+            console.log('🧪 Testing update with data:', testData);
+            
+            const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/discord-poll-update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                body: JSON.stringify(testData)
+            });
+            
+            const responseText = await response.text();
+            console.log('🧪 Update API response:', response.status, responseText);
+            
+            let result = `🧪 **Database Update Test:**\n\n`;
+            result += `**Request Data:**\n`;
+            result += `• Poll ID: ${testData.poll_id}\n`;
+            result += `• Discord ID: ${testData.discord_id}\n`;
+            result += `• XP Awarded: ${formatEDecimal(testData.xp_awarded)}\n\n`;
+            result += `**Response:**\n`;
+            result += `• Status: ${response.status}\n`;
+            result += `• Response: ${responseText}\n\n`;
+            
+            if (response.ok) {
+                result += `✅ **Update successful!** Now run \`!checkapi\` to verify the change.`;
+            } else {
+                result += `❌ **Update failed!** Check the response for error details.`;
+            }
+            
+            await message.reply(result);
+            
+        } catch (error) {
+            console.error('❌ Error testing update:', error);
+            await message.reply(`❌ **Test failed:** ${error.message}`);
+        }
+        return;
+    }
+    
+    // Handle command to check API data after update
+    if (message.content === '!checkapi' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            await message.reply('🔍 **Checking API data after XP update...**');
+            
+            // Fetch current API data
+            const response = await fetch('https://www.smallstreet.app/wp-json/myapi/v1/get-discord-poll', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+
+            if (!response.ok) {
+                await message.reply(`❌ **Failed to fetch API data:** ${response.status}`);
+                return;
+            }
+
+            const apiData = await response.json();
+            
+            // Find latest poll data
+            const latestPollId = '1417818600240320543'; // From your example
+            const pollData = apiData.filter(item => {
+                try {
+                    const discordPoll = JSON.parse(item.discord_poll);
+                    return discordPoll.poll_id === latestPollId;
+                } catch (error) {
+                    return false;
+                }
+            });
+
+            let responseText = `🔍 **API Data Check for Poll ${latestPollId}:**\n\n`;
+            
+            if (pollData.length === 0) {
+                responseText += '❌ **No data found for this poll in API**';
+            } else {
+                responseText += `**Found ${pollData.length} records:**\n\n`;
+                
+                pollData.forEach((item, index) => {
+                    const discordPoll = JSON.parse(item.discord_poll);
+                    responseText += `${index + 1}. **${discordPoll.username}**\n`;
+                    responseText += `   • Email: ${item.email}\n`;
+                    responseText += `   • Vote: ${discordPoll.vote}\n`;
+                    responseText += `   • XP Awarded: ${formatEDecimal(discordPoll.xp_awarded)} (${discordPoll.xp_awarded.toLocaleString()})\n`;
+                    responseText += `   • Status: ${discordPoll.status}\n`;
+                    responseText += `   • Submitted: ${discordPoll.submitted_at}\n\n`;
+                });
+            }
+            
+            await message.reply(responseText);
+            
+        } catch (error) {
+            console.error('❌ Error checking API data:', error);
+            await message.reply(`❌ **API check failed:** ${error.message}`);
         }
         return;
     }
