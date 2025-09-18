@@ -15,6 +15,7 @@ let isInitialized = false;
 
 // Track poll creation to prevent duplicates
 let isCreatingPoll = false;
+let currentPollCreationId = null;
 
 // Debug mode for database insertion
 
@@ -925,6 +926,42 @@ async function insertUserToSmallStreetUsermeta(userData) {
     }
 }
 
+// Check for recent polls to prevent duplicates
+async function checkForRecentPolls(channel) {
+    try {
+        console.log(`🔍 Checking for recent polls in channel: ${channel.name}`);
+        
+        // Get messages from the last 5 minutes
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        const messages = await channel.messages.fetch({ limit: 10 });
+        
+        const recentPolls = messages.filter(msg => 
+            msg.author.id === client.user.id && 
+            msg.embeds.length > 0 && 
+            msg.embeds[0].title && 
+            msg.embeds[0].title.includes('Monthly Resource Allocation Vote') &&
+            msg.createdTimestamp > fiveMinutesAgo
+        );
+        
+        console.log(`🔍 Found ${recentPolls.size} recent polls in the last 5 minutes`);
+        
+        if (recentPolls.size > 0) {
+            const recentPoll = recentPolls.first();
+            console.log(`⚠️ Recent poll found: ${recentPoll.id} created at ${recentPoll.createdAt.toISOString()}`);
+            return {
+                hasRecent: true,
+                messageId: recentPoll.id,
+                createdAt: recentPoll.createdAt
+            };
+        }
+        
+        return { hasRecent: false };
+    } catch (error) {
+        console.error('❌ Error checking for recent polls:', error);
+        return { hasRecent: false, error: error.message };
+    }
+}
+
 // Enhanced poll system with three-choice resource allocation
 async function createEnhancedMonthlyPoll() {
     console.log(`🔍 createEnhancedMonthlyPoll() called at ${new Date().toISOString()}`);
@@ -937,6 +974,16 @@ async function createEnhancedMonthlyPoll() {
         }
         
         console.log(`🔍 Creating poll in channel: ${channel.name} (${channel.id})`);
+        
+        // Check for recent polls
+        const recentCheck = await checkForRecentPolls(channel);
+        if (recentCheck.hasRecent) {
+            console.log(`⚠️ Recent poll found (${recentCheck.messageId}), preventing duplicate creation`);
+            return { 
+                success: false, 
+                error: `Recent poll already exists (${recentCheck.messageId}) created at ${recentCheck.createdAt.toISOString()}` 
+            };
+        }
 
         // Create enhanced poll embed
         const pollEmbed = {
@@ -1992,17 +2039,29 @@ client.on('messageCreate', async (message) => {
     
     // Handle command to create enhanced monthly poll
     if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
+        const pollCreationId = `poll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         console.log(`🔍 !createpoll command triggered by ${message.author.tag} (${message.author.id}) at ${new Date().toISOString()}`);
+        console.log(`🔍 Poll creation ID: ${pollCreationId}`);
         
         // Prevent multiple polls from being created simultaneously
         if (isCreatingPoll) {
-            console.log(`⚠️ Poll creation already in progress, ignoring duplicate command`);
-            await message.reply('⚠️ **Poll creation already in progress!** Please wait for the current poll to be created.');
+            console.log(`⚠️ Poll creation already in progress (ID: ${currentPollCreationId}), ignoring duplicate command (ID: ${pollCreationId})`);
+            await message.reply(`⚠️ **Poll creation already in progress!** (ID: ${currentPollCreationId})\nPlease wait for the current poll to be created.`);
             return;
         }
         
         isCreatingPoll = true;
-        console.log(`🔍 Setting isCreatingPoll to true`);
+        currentPollCreationId = pollCreationId;
+        console.log(`🔍 Setting isCreatingPoll to true with ID: ${pollCreationId}`);
+        
+        // Set a timeout to automatically reset the flag after 30 seconds
+        const timeoutId = setTimeout(() => {
+            if (isCreatingPoll) {
+                console.log(`⚠️ Poll creation timeout reached, resetting flags for ID: ${pollCreationId}`);
+                isCreatingPoll = false;
+                currentPollCreationId = null;
+            }
+        }, 30000);
         
         try {
             // Send initial reply
@@ -2033,8 +2092,10 @@ client.on('messageCreate', async (message) => {
                 }
                 
                 // Reset the flag after successful creation
+                clearTimeout(timeoutId);
                 isCreatingPoll = false;
-                console.log(`🔍 Setting isCreatingPoll to false (success case)`);
+                currentPollCreationId = null;
+                console.log(`🔍 Setting isCreatingPoll to false (success case) - ID: ${pollCreationId}`);
             } else {
                 console.error('❌ Poll creation failed:', pollResult.error);
                 try {
@@ -2052,8 +2113,10 @@ client.on('messageCreate', async (message) => {
                 }
                 
                 // Reset the flag after error
+                clearTimeout(timeoutId);
                 isCreatingPoll = false;
-                console.log(`🔍 Setting isCreatingPoll to false (error case)`);
+                currentPollCreationId = null;
+                console.log(`🔍 Setting isCreatingPoll to false (error case) - ID: ${pollCreationId}`);
             }
         } catch (error) {
             console.error('❌ Error creating enhanced poll:', error);
@@ -2071,9 +2134,11 @@ client.on('messageCreate', async (message) => {
                 console.log('⚠️ Could not send error reply:', replyError.message);
             }
         } finally {
-            // Always reset the flag
+            // Always reset the flag and clear timeout
+            clearTimeout(timeoutId);
             isCreatingPoll = false;
-            console.log(`🔍 Setting isCreatingPoll to false`);
+            currentPollCreationId = null;
+            console.log(`🔍 Setting isCreatingPoll to false (finally) - ID: ${pollCreationId}`);
         }
         return;
     }
