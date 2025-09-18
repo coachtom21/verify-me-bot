@@ -128,7 +128,7 @@ app.get('/api/poll-xp/:pollId', async (req, res) => {
             const discordPoll = JSON.parse(item.discord_poll);
             
             // Get user's XP level for voting power calculation
-            const xpLevel = discordPoll.xp_awarded || 2000000; // Use awarded XP as current level
+            const xpLevel = discordPoll.xp_awarded || 1000000; // Use awarded XP as current level
             const votingPower = getVotingPower(xpLevel);
             
             // Determine if this is a winner (we'll need to calculate this based on vote counts)
@@ -177,7 +177,7 @@ app.get('/api/poll-xp/:pollId', async (req, res) => {
 
         // Calculate total XP awarded (including bonuses)
         const xpData = processedData.map(voter => {
-            const baseXP = 2000000;
+            const baseXP = 1000000;
             const winningBonus = voter.is_winner ? 5000000 : 0;
             const topContributorBonus = voter.is_top_contributor ? 10000000 : 0;
             const totalXPAwarded = baseXP + winningBonus + topContributorBonus;
@@ -306,7 +306,7 @@ app.get('/api/polls-xp', async (req, res) => {
             
             // Calculate total XP awarded for this poll
             const totalXP = poll.participants.reduce((sum, participant) => {
-                const baseXP = 2000000;
+                const baseXP = 1000000;
                 const winningBonus = participant.vote === winningChoice ? 5000000 : 0;
                 const topContributorBonus = participant.is_top_contributor ? 10000000 : 0;
                 return sum + baseXP + winningBonus + topContributorBonus;
@@ -1128,7 +1128,7 @@ async function getEnhancedPollResults(messageId) {
                 results.uniqueVoters.add(user.id);
                 
                 // Calculate XP for this vote (base XP only, bonuses calculated later)
-                const baseXP = 2000000; // 2M XP for voting
+                const baseXP = 1000000; // 1M XP for voting
                 
                 console.log(`🔍 Debug: User ${user.username} - Base XP: ${baseXP}, Choice: ${choice}, Voting Power: ${votingPower}`);
                 
@@ -1276,18 +1276,18 @@ async function getUserXPLevel(userId, discordUsername) {
 
         // Fallback to simulated XP if not found in API
         console.log(`⚠️ User not found in API, using simulated XP`);
-        const baseXP = 2000000; // 2M XP base
+        const baseXP = 1000000; // 1M XP base
         const randomMultiplier = Math.floor(Math.random() * 100) + 1;
         return baseXP * randomMultiplier;
     } catch (error) {
         console.error('Error getting user XP level:', error);
-        return 2000000; // Default to 2M XP
+        return 1000000; // Default to 1M XP
     }
 }
 
 // Calculate XP rewards for poll participation
 function calculatePollXP(voter, winningChoice) {
-    const baseXP = 2000000;        // 2M XP for voting
+    const baseXP = 1000000;        // 1M XP for voting
     const winningBonus = 5000000;  // 5M XP if your choice wins
     const topContributor = 10000000; // 10M XP for top contributors
     
@@ -1314,7 +1314,7 @@ async function awardPollXP(voters, winningChoice, pollId) {
         for (const voter of voters) {
             const xpAwarded = calculatePollXP(voter, winningChoice);
             
-            console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 2M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
+            console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 1M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
             
             // Check if vote data already exists to avoid duplicates
             const existingVoteData = {
@@ -1326,7 +1326,7 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 username: voter.username,
                 display_name: voter.displayName || voter.username,
                 membership: voter.verified ? 'verified' : 'unverified',
-                xp_awarded: 2000000, // Base XP for voting
+                xp_awarded: 1000000, // Base XP for voting
                 status: 'submitted',
                 submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', '')
             };
@@ -1351,7 +1351,7 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 choice: voter.choice,
                 voting_power: voter.votingPower,
                 xp_breakdown: {
-                    base: 2000000,
+                    base: 1000000,
                     winning_bonus: voter.choice === winningChoice ? 5000000 : 0,
                     top_contributor: voter.votingPower >= 25 ? 10000000 : 0
                 }
@@ -2185,12 +2185,21 @@ client.on('messageCreate', async (message) => {
             
             const data = results.data;
             
+            console.log(`🔍 Poll data received:`, {
+                peace: { count: data.peace.count, voters: data.peace.voters.length },
+                voting: { count: data.voting.count, voters: data.voting.voters.length },
+                disaster: { count: data.disaster.count, voters: data.disaster.voters.length },
+                totalVoters: data.totalVoters
+            });
+            
             // Calculate and award XP for participation check
             const participationVoters = [
                 ...data.peace.voters,
                 ...data.voting.voters,
                 ...data.disaster.voters
             ];
+            
+            console.log(`🔍 Total participation voters found: ${participationVoters.length}`);
             
             // Determine winning choice for XP calculation
             const participationWinningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
@@ -2202,19 +2211,28 @@ client.on('messageCreate', async (message) => {
             const xpResult = await awardPollXP(participationVoters, participationWinningChoice, messageId);
             console.log(`🔍 XP award result:`, xpResult);
             
-            // Show detailed XP breakdown in the response
-            if (xpResult.success && xpResult.awards) {
-                let xpBreakdown = '\n💰 **XP Awards Summary:**\n';
-                xpResult.awards.forEach((award, index) => {
-                    const isWinner = award.choice === participationWinningChoice;
-                    const isTopContributor = award.votingPower >= 25;
-                    xpBreakdown += `${index + 1}. **${award.username}**: ${formatEDecimal(award.xpAwarded)} XP\n`;
-                    xpBreakdown += `   • Choice: ${award.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
-                    xpBreakdown += `   • Breakdown: 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n\n`;
+            // Show detailed participant information with XP and verification status
+            if (participationVoters.length > 0) {
+                let participantDetails = '\n👥 **Participant Details:**\n';
+                
+                participationVoters.forEach((voter, index) => {
+                    const isWinner = voter.choice === participationWinningChoice;
+                    const isTopContributor = voter.votingPower >= 25;
+                    const xpAwarded = calculatePollXP(voter, participationWinningChoice);
+                    
+                    participantDetails += `\n**${index + 1}. ${voter.displayName || voter.username}**\n`;
+                    participantDetails += `   • **Choice:** ${voter.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
+                    participantDetails += `   • **Verified:** ${voter.verified ? '✅ Yes' : '❌ No'}\n`;
+                    participantDetails += `   • **XP Level:** ${formatEDecimal(voter.xpLevel)}\n`;
+                    participantDetails += `   • **Voting Power:** ${voter.votingPower}x\n`;
+                    participantDetails += `   • **XP Awarded:** ${formatEDecimal(xpAwarded)} XP\n`;
+                    participantDetails += `   • **Breakdown:** 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n`;
                 });
                 
-                // Send XP breakdown as a separate message
-                await message.reply(xpBreakdown);
+                // Send participant details as a separate message
+                await message.reply(participantDetails);
+            } else {
+                await message.reply('\n❌ **No participants found in this poll.**\n\n**Possible reasons:**\n• No one has voted yet\n• Poll reactions were cleared\n• Bot doesn\'t have permission to read reactions');
             }
             
             // Determine the winning choice
@@ -2241,14 +2259,21 @@ client.on('messageCreate', async (message) => {
                     },
                     {
                         name: '👑 **TOP CONTRIBUTOR**',
-                        value: topContributor ? 
+                        value: topContributor && participationVoters.length > 0 ? 
                             `**${topContributor.displayName}**\n\n**Choice:** ${topContributor.choice}\n**XP Level:** ${formatEDecimal(topContributor.xpLevel)}\n**Voting Power:** ${topContributor.votingPower}x\n**Verified:** ${topContributor.verified ? '✅ Yes' : '❌ No'}` :
-                            'No participants found',
+                            participationVoters.length === 0 ? 'No participants found' : 'No top contributors',
                         inline: false
                     },
                     {
                         name: '📊 **Vote Summary**',
                         value: `🕊️ **Peace:** ${data.peace.count} votes (${data.peace.weighted} weighted)\n🗳️ **Voting:** ${data.voting.count} votes (${data.voting.weighted} weighted)\n🆘 **Disaster:** ${data.disaster.count} votes (${data.disaster.weighted} weighted)\n\n**Total Participants:** ${data.totalVoters}`,
+                        inline: false
+                    },
+                    {
+                        name: '💰 **XP Awards Summary**',
+                        value: participationVoters.length > 0 ? 
+                            `**Total XP Distributed:** ${formatEDecimal(participationVoters.reduce((sum, voter) => sum + calculatePollXP(voter, participationWinningChoice), 0))}\n**Winners:** ${participationVoters.filter(v => v.choice === participationWinningChoice).length}\n**Top Contributors:** ${participationVoters.filter(v => v.votingPower >= 25).length}\n**Verified Members:** ${participationVoters.filter(v => v.verified).length}` :
+                            'No participants to award XP',
                         inline: false
                     }
                 ],
@@ -2686,7 +2711,7 @@ client.on('messageCreate', async (message) => {
                         
                         Object.values(userData).forEach((user, index) => {
                             const finalRecord = user.records.find(r => r.is_final) || user.records[0];
-                            const isWinner = finalRecord.xp_awarded > 2000000;
+                            const isWinner = finalRecord.xp_awarded > 1000000;
                             
                             responseText += `${index + 1}. **${user.username}**\n`;
                             responseText += `   • Email: ${user.email}\n`;
