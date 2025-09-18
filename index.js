@@ -1625,7 +1625,7 @@ async function sendPollResultsToParticipants(voters, winningChoice, pollId) {
                     dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
                 } else {
                     dmMessage += `🔐 **VERIFICATION REQUIRED**\n`;
-                    dmMessage += `To earn XP rewards, please get verified by uploading your vCard to the verify-me channel.\n\n`;
+                    dmMessage += `To earn XP rewards, please get verified by uploading your vCard to the #verify-me channel.\n\n`;
                 }
                 
                 if (isWinner) {
