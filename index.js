@@ -2335,63 +2335,46 @@ client.on('messageCreate', async (message) => {
             const topContributors = participationVoters.filter(v => v.votingPower >= 25).length;
             const verifiedMembers = participationVoters.filter(v => v.verified).length;
             
-            // Create modern table format
-            let tableMessage = `╔══════════════════════════════════════════════════════════════╗\n`;
-            tableMessage += `║                    🏆 POLL RESULTS 🏆                     ║\n`;
-            tableMessage += `╚══════════════════════════════════════════════════════════════╝\n\n`;
+            // Create clean text format
+            let tableMessage = `🏆 **POLL RESULTS**\n`;
+            tableMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
             
             tableMessage += `📋 **POLL INFORMATION**\n`;
-            tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-            tableMessage += `│ Message ID: ${messageId.padEnd(45)} │\n`;
-            tableMessage += `│ Analysis: ${new Date().toLocaleString().padEnd(47)} │\n`;
-            tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+            tableMessage += `Message ID: ${messageId}\n`;
+            tableMessage += `Analysis: ${new Date().toLocaleString()}\n\n`;
             
             tableMessage += `🎯 **WINNING VOTE**\n`;
-            tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-            tableMessage += `│ ${winningEmoji} ${winningName.padEnd(55)} │\n`;
-            tableMessage += `├─────────────────────────────────────────────────────────────┤\n`;
-            tableMessage += `│ Weighted Votes: ${data[winningChoice].weighted.toString().padEnd(40)} │\n`;
-            tableMessage += `│ Raw Votes: ${data[winningChoice].count.toString().padEnd(45)} │\n`;
-            tableMessage += `│ Percentage: ${((data[winningChoice].weighted / (data.peace.weighted + data.voting.weighted + data.disaster.weighted)) * 100).toFixed(1)}%${' '.repeat(35)} │\n`;
-            tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+            tableMessage += `${winningEmoji} **${winningName}**\n\n`;
+            tableMessage += `Weighted Votes: ${data[winningChoice].weighted}\n`;
+            tableMessage += `Raw Votes: ${data[winningChoice].count}\n`;
+            tableMessage += `Percentage: ${((data[winningChoice].weighted / (data.peace.weighted + data.voting.weighted + data.disaster.weighted)) * 100).toFixed(1)}%\n\n`;
             
             if (topContributor && participationVoters.length > 0) {
                 tableMessage += `👑 **TOP CONTRIBUTOR**\n`;
-                tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-                tableMessage += `│ ${topContributor.displayName.padEnd(61)} │\n`;
-                tableMessage += `├─────────────────────────────────────────────────────────────┤\n`;
-                tableMessage += `│ Choice: ${topContributor.choice.padEnd(54)} │\n`;
-                tableMessage += `│ XP Level: ${formatEDecimal(topContributor.xpLevel).padEnd(52)} │\n`;
-                tableMessage += `│ Voting Power: ${topContributor.votingPower}x${' '.repeat(42)} │\n`;
-                tableMessage += `│ Verified: ${topContributor.verified ? '✅ Yes' : '❌ No'}${' '.repeat(42)} │\n`;
-                tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+                tableMessage += `**${topContributor.displayName}**\n\n`;
+                tableMessage += `Choice: ${topContributor.choice}\n`;
+                tableMessage += `XP Level: ${formatEDecimal(topContributor.xpLevel)}\n`;
+                tableMessage += `Voting Power: ${topContributor.votingPower}x\n`;
+                tableMessage += `Verified: ${topContributor.verified ? '✅ Yes' : '❌ No'}\n\n`;
             } else {
                 tableMessage += `👑 **TOP CONTRIBUTOR**\n`;
-                tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-                tableMessage += `│ ${participationVoters.length === 0 ? 'No participants found'.padEnd(61) : 'No top contributors'.padEnd(61)} │\n`;
-                tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+                tableMessage += `${participationVoters.length === 0 ? 'No participants found' : 'No top contributors'}\n\n`;
             }
             
             tableMessage += `📊 **VOTE SUMMARY**\n`;
-            tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-            tableMessage += `│ 🕊️ Peace: ${data.peace.count} votes (${data.peace.weighted} weighted)${' '.repeat(25)} │\n`;
-            tableMessage += `│ 🗳️ Voting: ${data.voting.count} votes (${data.voting.weighted} weighted)${' '.repeat(24)} │\n`;
-            tableMessage += `│ 🆘 Disaster: ${data.disaster.count} votes (${data.disaster.weighted} weighted)${' '.repeat(22)} │\n`;
-            tableMessage += `├─────────────────────────────────────────────────────────────┤\n`;
-            tableMessage += `│ Total Participants: ${data.totalVoters.toString().padEnd(39)} │\n`;
-            tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+            tableMessage += `🕊️ Peace: ${data.peace.count} votes (${data.peace.weighted} weighted)\n`;
+            tableMessage += `🗳️ Voting: ${data.voting.count} votes (${data.voting.weighted} weighted)\n`;
+            tableMessage += `🆘 Disaster: ${data.disaster.count} votes (${data.disaster.weighted} weighted)\n\n`;
+            tableMessage += `Total Participants: ${data.totalVoters}\n\n`;
             
             tableMessage += `💰 **XP AWARDS SUMMARY**\n`;
-            tableMessage += `╭─────────────────────────────────────────────────────────────╮\n`;
-            tableMessage += `│ Total XP: ${formatEDecimal(totalXP).padEnd(49)} │\n`;
-            tableMessage += `│ Winners: ${winners.toString().padEnd(50)} │\n`;
-            tableMessage += `│ Top Contributors: ${topContributors.toString().padEnd(42)} │\n`;
-            tableMessage += `│ Verified Members: ${verifiedMembers.toString().padEnd(40)} │\n`;
-            tableMessage += `╰─────────────────────────────────────────────────────────────╯\n\n`;
+            tableMessage += `Total XP: ${formatEDecimal(totalXP)}\n`;
+            tableMessage += `Winners: ${winners}\n`;
+            tableMessage += `Top Contributors: ${topContributors}\n`;
+            tableMessage += `Verified Members: ${verifiedMembers}\n\n`;
             
-            tableMessage += `╔══════════════════════════════════════════════════════════════╗\n`;
-            tableMessage += `║        Make Everyone Great Again • SmallStreet Governance        ║\n`;
-            tableMessage += `╚══════════════════════════════════════════════════════════════╝`;
+            tableMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            tableMessage += `Make Everyone Great Again • SmallStreet Governance`;
             
             // Create embed for the table
             const resultsEmbed = {
