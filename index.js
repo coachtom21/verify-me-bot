@@ -2336,38 +2336,38 @@ client.on('messageCreate', async (message) => {
             const verifiedMembers = participationVoters.filter(v => v.verified).length;
             
             // Create clean text format
-            let tableMessage = `🏆 **POLL RESULTS**\n`;
+            let tableMessage = `🏆 POLL RESULTS\n`;
             tableMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
             
-            tableMessage += `📋 **POLL INFORMATION**\n`;
+            tableMessage += `📋 POLL INFORMATION\n`;
             tableMessage += `Message ID: ${messageId}\n`;
             tableMessage += `Analysis: ${new Date().toLocaleString()}\n\n`;
             
-            tableMessage += `🎯 **WINNING VOTE**\n`;
-            tableMessage += `${winningEmoji} **${winningName}**\n\n`;
+            tableMessage += `🎯 WINNING VOTE\n`;
+            tableMessage += `${winningEmoji} ${winningName}\n\n`;
             tableMessage += `Weighted Votes: ${data[winningChoice].weighted}\n`;
             tableMessage += `Raw Votes: ${data[winningChoice].count}\n`;
             tableMessage += `Percentage: ${((data[winningChoice].weighted / (data.peace.weighted + data.voting.weighted + data.disaster.weighted)) * 100).toFixed(1)}%\n\n`;
             
             if (topContributor && participationVoters.length > 0) {
-                tableMessage += `👑 **TOP CONTRIBUTOR**\n`;
-                tableMessage += `**${topContributor.displayName}**\n\n`;
+                tableMessage += `👑 TOP CONTRIBUTOR\n`;
+                tableMessage += `${topContributor.displayName}\n\n`;
                 tableMessage += `Choice: ${topContributor.choice}\n`;
                 tableMessage += `XP Level: ${formatEDecimal(topContributor.xpLevel)}\n`;
                 tableMessage += `Voting Power: ${topContributor.votingPower}x\n`;
                 tableMessage += `Verified: ${topContributor.verified ? '✅ Yes' : '❌ No'}\n\n`;
             } else {
-                tableMessage += `👑 **TOP CONTRIBUTOR**\n`;
+                tableMessage += `👑 TOP CONTRIBUTOR\n`;
                 tableMessage += `${participationVoters.length === 0 ? 'No participants found' : 'No top contributors'}\n\n`;
             }
             
-            tableMessage += `📊 **VOTE SUMMARY**\n`;
+            tableMessage += `📊 VOTE SUMMARY\n`;
             tableMessage += `🕊️ Peace: ${data.peace.count} votes (${data.peace.weighted} weighted)\n`;
             tableMessage += `🗳️ Voting: ${data.voting.count} votes (${data.voting.weighted} weighted)\n`;
             tableMessage += `🆘 Disaster: ${data.disaster.count} votes (${data.disaster.weighted} weighted)\n\n`;
             tableMessage += `Total Participants: ${data.totalVoters}\n\n`;
             
-            tableMessage += `💰 **XP AWARDS SUMMARY**\n`;
+            tableMessage += `💰 XP AWARDS SUMMARY\n`;
             tableMessage += `Total XP: ${formatEDecimal(totalXP)}\n`;
             tableMessage += `Winners: ${winners}\n`;
             tableMessage += `Top Contributors: ${topContributors}\n`;
