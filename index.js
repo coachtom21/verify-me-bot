@@ -1384,6 +1384,24 @@ async function awardPollXP(voters, winningChoice, pollId) {
             console.log(`   - Final XP: ${formatEDecimal(xpAwarded)}`);
             
             // Now store the data with final XP and status
+            // Use poll creation time instead of current time
+            let submittedAt;
+            try {
+                // Try to get the actual poll message creation time
+                const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
+                if (channel) {
+                    const pollMessage = await channel.messages.fetch(pollId);
+                    submittedAt = pollMessage.createdAt.toISOString().replace('T', ' ').replace('Z', '');
+                } else {
+                    // Fallback to current time if channel not found
+                    submittedAt = new Date().toISOString().replace('T', ' ').replace('Z', '');
+                }
+            } catch (error) {
+                // Fallback to current time if message fetch fails
+                console.log(`⚠️ Could not fetch poll message ${pollId}, using current time`);
+                submittedAt = new Date().toISOString().replace('T', ' ').replace('Z', '');
+            }
+            
             const finalVoteData = {
                 poll_id: pollId,
                 email: voter.email || `${voter.userId}@discord.local`,
@@ -1395,7 +1413,7 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 membership: voter.verified ? 'verified' : 'unverified',
                 xp_awarded: xpAwarded, // Final XP amount (base + bonuses)
                 status: 'final_awarded',
-                submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
+                submitted_at: submittedAt, // Use poll creation time
                 // Add status flags for clarity
                 is_winner: isWinner,
                 is_top_contributor: isTopContributor,
