@@ -13,6 +13,9 @@ const PORT = process.env.PORT || 3000;
 // Track bot instance
 let isInitialized = false;
 
+// Track poll creation to prevent duplicates
+let isCreatingPoll = false;
+
 // Debug mode for database insertion
 
 // Healthcheck endpoint
@@ -924,12 +927,16 @@ async function insertUserToSmallStreetUsermeta(userData) {
 
 // Enhanced poll system with three-choice resource allocation
 async function createEnhancedMonthlyPoll() {
+    console.log(`🔍 createEnhancedMonthlyPoll() called at ${new Date().toISOString()}`);
+    
     try {
         const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
         if (!channel) {
             console.error('❌ Monthly redemption channel not found');
             return { success: false, error: 'Channel not found' };
         }
+        
+        console.log(`🔍 Creating poll in channel: ${channel.name} (${channel.id})`);
 
         // Create enhanced poll embed
         const pollEmbed = {
@@ -975,15 +982,19 @@ async function createEnhancedMonthlyPoll() {
         };
 
         // Send the poll message
+        console.log(`🔍 Sending poll message to channel...`);
         const pollMessage = await channel.send({ embeds: [pollEmbed] });
+        console.log(`🔍 Poll message sent with ID: ${pollMessage.id}`);
 
         // Add reaction options for voting (three choices)
         const reactions = ['🕊️', '🗳️', '🆘'];
+        console.log(`🔍 Adding reactions: ${reactions.join(', ')}`);
         for (const reaction of reactions) {
             await pollMessage.react(reaction);
+            console.log(`🔍 Added reaction: ${reaction}`);
         }
 
-        console.log(`✅ Enhanced monthly poll created in ${channel.name}`);
+        console.log(`✅ Enhanced monthly poll created in ${channel.name} with message ID: ${pollMessage.id}`);
         return { 
             success: true, 
             messageId: pollMessage.id,
@@ -1981,6 +1992,18 @@ client.on('messageCreate', async (message) => {
     
     // Handle command to create enhanced monthly poll
     if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
+        console.log(`🔍 !createpoll command triggered by ${message.author.tag} (${message.author.id}) at ${new Date().toISOString()}`);
+        
+        // Prevent multiple polls from being created simultaneously
+        if (isCreatingPoll) {
+            console.log(`⚠️ Poll creation already in progress, ignoring duplicate command`);
+            await message.reply('⚠️ **Poll creation already in progress!** Please wait for the current poll to be created.');
+            return;
+        }
+        
+        isCreatingPoll = true;
+        console.log(`🔍 Setting isCreatingPoll to true`);
+        
         try {
             // Send initial reply
             const initialReply = await message.reply('🗳️ Creating Monthly Resource Allocation poll...').catch(err => {
@@ -2008,6 +2031,10 @@ client.on('messageCreate', async (message) => {
                     console.log('⚠️ Could not send success reply (poll was still created):', replyError.message);
                     // Poll was created successfully, just couldn't send the reply
                 }
+                
+                // Reset the flag after successful creation
+                isCreatingPoll = false;
+                console.log(`🔍 Setting isCreatingPoll to false (success case)`);
             } else {
                 console.error('❌ Poll creation failed:', pollResult.error);
                 try {
@@ -2023,6 +2050,10 @@ client.on('messageCreate', async (message) => {
                 } catch (replyError) {
                     console.log('⚠️ Could not send error reply:', replyError.message);
                 }
+                
+                // Reset the flag after error
+                isCreatingPoll = false;
+                console.log(`🔍 Setting isCreatingPoll to false (error case)`);
             }
         } catch (error) {
             console.error('❌ Error creating enhanced poll:', error);
@@ -2039,6 +2070,10 @@ client.on('messageCreate', async (message) => {
             } catch (replyError) {
                 console.log('⚠️ Could not send error reply:', replyError.message);
             }
+        } finally {
+            // Always reset the flag
+            isCreatingPoll = false;
+            console.log(`🔍 Setting isCreatingPoll to false`);
         }
         return;
     }
