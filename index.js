@@ -2368,7 +2368,12 @@ client.on('messageCreate', async (message) => {
             // Check if participants were found
             if (participationVoters.length === 0) {
                 await message.reply('\n❌ **No participants found in this poll.**\n\n**Possible reasons:**\n• No one has voted yet\n• Poll reactions were cleared\n• Bot doesn\'t have permission to read reactions');
+                return;
             }
+            
+            // Send direct messages to all participants
+            console.log(`📤 Sending DMs to ${participationVoters.length} participants...`);
+            await sendPollResultsToParticipants(participationVoters, participationWinningChoice, messageId);
             
             // Determine the winning choice
             const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
