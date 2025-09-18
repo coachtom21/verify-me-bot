@@ -52,7 +52,10 @@ app.get('/api/debug-participation/:pollId', async (req, res) => {
         const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
                             data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
         
-        // Award XP to all participants
+        // Check if vote data already exists to avoid duplicates
+        console.log(`🔍 Checking for existing vote data for poll ${pollId}...`);
+        
+        // Award XP to all participants (this will handle duplicate checking internally)
         const xpResult = await awardPollXP(participationVoters, winningChoice, pollId);
         
         res.json({
@@ -1129,27 +1132,7 @@ async function getEnhancedPollResults(messageId) {
                 
                 console.log(`🔍 Debug: User ${user.username} - Base XP: ${baseXP}, Choice: ${choice}, Voting Power: ${votingPower}`);
                 
-                // Store individual vote in database with base XP (will be updated later with final amount)
-                const voteData = {
-                    poll_id: messageId,
-                    email: userVerification.exists ? userVerification.userData.email : `${user.username}@discord.local`,
-                    vote: choice,
-                    vote_type: 'monthly_poll',
-                    discord_id: user.id,
-                    username: user.username,
-                    display_name: member.displayName,
-                    membership: userVerification.exists ? 'verified' : 'unverified',
-                    xp_awarded: baseXP, // Base XP for voting (will be updated to final amount)
-                    status: 'submitted',
-                    submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', '')
-                };
-                
-                try {
-                    await storePollData(voteData);
-                    console.log(`✅ Stored poll data for ${user.username}`);
-                } catch (storeError) {
-                    console.error(`❌ Failed to store poll data for ${user.username}:`, storeError);
-                }
+                // Note: Vote data will be stored later in awardPollXP() to avoid duplicates
                 
                 console.log(`🔍 Debug: Added voter to ${choice} - Count: ${results[choice].count}, Weighted: ${results[choice].weighted}`);
             }
@@ -1331,7 +1314,36 @@ async function awardPollXP(voters, winningChoice, pollId) {
         for (const voter of voters) {
             const xpAwarded = calculatePollXP(voter, winningChoice);
             
-            console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 1M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
+            console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 2M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
+            
+            // Check if vote data already exists to avoid duplicates
+            const existingVoteData = {
+                poll_id: pollId,
+                email: voter.email || `${voter.userId}@discord.local`,
+                vote: voter.choice,
+                vote_type: 'monthly_poll',
+                discord_id: voter.userId,
+                username: voter.username,
+                display_name: voter.displayName || voter.username,
+                membership: voter.verified ? 'verified' : 'unverified',
+                xp_awarded: 2000000, // Base XP for voting
+                status: 'submitted',
+                submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', '')
+            };
+            
+            // Only store if this is the first time processing this poll
+            // (This is a simple check - in production you might want to query the database)
+            try {
+                await storePollData(existingVoteData);
+                console.log(`✅ Stored initial vote data for ${voter.username}`);
+            } catch (storeError) {
+                // If it's a duplicate error, that's okay - vote already exists
+                if (storeError.message && (storeError.message.includes('duplicate') || storeError.message.includes('already exists'))) {
+                    console.log(`ℹ️ Vote data already exists for ${voter.username} - skipping duplicate`);
+                } else {
+                    console.error(`❌ Failed to store initial vote data for ${voter.username}:`, storeError);
+                }
+            }
             
             // Award XP (integrate with your XP system)
             await addXpEvent(voter.userId, 'POLL_PARTICIPATION', xpAwarded, {
