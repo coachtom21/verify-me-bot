@@ -1982,18 +1982,63 @@ client.on('messageCreate', async (message) => {
     // Handle command to create enhanced monthly poll
     if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
         try {
-            await message.reply('🗳️ Creating Monthly Resource Allocation poll...');
+            // Send initial reply
+            const initialReply = await message.reply('🗳️ Creating Monthly Resource Allocation poll...').catch(err => {
+                console.log('⚠️ Could not send initial reply:', err.message);
+                return null;
+            });
             
             const pollResult = await createEnhancedMonthlyPoll();
             
             if (pollResult.success) {
-                await message.reply(`✅ **Enhanced Poll Created Successfully!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief`);
+                console.log(`✅ Poll created successfully: ${pollResult.messageId}`);
+                
+                // Try to send success reply, but don't fail if it times out
+                try {
+                    const successMessage = `✅ **Enhanced Poll Created Successfully!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief`;
+                    
+                    // Add timeout to prevent socket hanging
+                    const replyPromise = message.reply(successMessage);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Reply timeout')), 10000)
+                    );
+                    
+                    await Promise.race([replyPromise, timeoutPromise]);
+                } catch (replyError) {
+                    console.log('⚠️ Could not send success reply (poll was still created):', replyError.message);
+                    // Poll was created successfully, just couldn't send the reply
+                }
             } else {
-                await message.reply(`❌ **Failed to create poll:** ${pollResult.error}`);
+                console.error('❌ Poll creation failed:', pollResult.error);
+                try {
+                    const errorMessage = `❌ **Failed to create poll:** ${pollResult.error}`;
+                    
+                    // Add timeout to prevent socket hanging
+                    const replyPromise = message.reply(errorMessage);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Reply timeout')), 10000)
+                    );
+                    
+                    await Promise.race([replyPromise, timeoutPromise]);
+                } catch (replyError) {
+                    console.log('⚠️ Could not send error reply:', replyError.message);
+                }
             }
         } catch (error) {
             console.error('❌ Error creating enhanced poll:', error);
-            await message.reply(`❌ Poll creation failed: ${error.message}`);
+            try {
+                const errorMessage = `❌ Poll creation failed: ${error.message}`;
+                
+                // Add timeout to prevent socket hanging
+                const replyPromise = message.reply(errorMessage);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Reply timeout')), 10000)
+                );
+                
+                await Promise.race([replyPromise, timeoutPromise]);
+            } catch (replyError) {
+                console.log('⚠️ Could not send error reply:', replyError.message);
+            }
         }
         return;
     }
