@@ -1374,8 +1374,17 @@ async function awardPollXP(voters, winningChoice, pollId) {
             
             console.log(`🔍 XP Award for ${voter.username}: ${xpAwarded} XP (Base: 1M, Winning: ${voter.choice === winningChoice ? '5M' : '0'}, Top Contributor: ${voter.votingPower >= 25 ? '10M' : '0'})`);
             
-            // Check if vote data already exists to avoid duplicates
-            const existingVoteData = {
+            // First determine participant status (winner, top contributor)
+            const isWinner = voter.choice === winningChoice;
+            const isTopContributor = voter.votingPower >= 25;
+            
+            console.log(`🔍 ${voter.username} Status:`);
+            console.log(`   - Winner: ${isWinner ? 'Yes' : 'No'}`);
+            console.log(`   - Top Contributor: ${isTopContributor ? 'Yes' : 'No'}`);
+            console.log(`   - Final XP: ${formatEDecimal(xpAwarded)}`);
+            
+            // Now store the data with final XP and status
+            const finalVoteData = {
                 poll_id: pollId,
                 email: voter.email || `${voter.userId}@discord.local`,
                 vote: voter.choice,
@@ -1384,23 +1393,26 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 username: voter.username,
                 display_name: voter.displayName || voter.username,
                 membership: voter.verified ? 'verified' : 'unverified',
-                xp_awarded: 1000000, // Base XP for voting
-                status: 'submitted',
-                submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', '')
+                xp_awarded: xpAwarded, // Final XP amount (base + bonuses)
+                status: 'final_awarded',
+                submitted_at: new Date().toISOString().replace('T', ' ').replace('Z', ''),
+                // Add status flags for clarity
+                is_winner: isWinner,
+                is_top_contributor: isTopContributor,
+                xp_breakdown: {
+                    base: 1000000,
+                    winning_bonus: isWinner ? 5000000 : 0,
+                    top_contributor_bonus: isTopContributor ? 10000000 : 0,
+                    total: xpAwarded
+                }
             };
             
-            // Only store if this is the first time processing this poll
-            // (This is a simple check - in production you might want to query the database)
+            // Store the final vote data with complete information
             try {
-                await storePollData(existingVoteData);
-                console.log(`✅ Stored initial vote data for ${voter.username}`);
+                await storePollData(finalVoteData);
+                console.log(`✅ Stored final vote data for ${voter.username} with complete status and XP`);
             } catch (storeError) {
-                // If it's a duplicate error, that's okay - vote already exists
-                if (storeError.message && (storeError.message.includes('duplicate') || storeError.message.includes('already exists'))) {
-                    console.log(`ℹ️ Vote data already exists for ${voter.username} - skipping duplicate`);
-                } else {
-                    console.error(`❌ Failed to store initial vote data for ${voter.username}:`, storeError);
-                }
+                console.error(`❌ Failed to store final vote data for ${voter.username}:`, storeError);
             }
             
             // Award XP (integrate with your XP system)
@@ -1415,55 +1427,8 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 }
             });
             
-            // Update database with final XP using multiple methods
-            if (pollId) {
-                let updateSuccess = false;
-                let updateError = null;
-                
-                try {
-                    console.log(`🔄 Updating database for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
-                    
-                    // Method 1: Primary update
-                    const updateResult = await updatePollDataXP(pollId, voter.userId, xpAwarded);
-                    
-                    if (updateResult.success) {
-                        console.log(`✅ Database updated successfully for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
-                        updateSuccess = true;
-                    } else {
-                        console.error(`❌ Primary update failed for ${voter.username}:`, updateResult.error);
-                        updateError = updateResult.error;
-                        
-                        // Method 2: Alternative update
-                        console.log(`🔄 Trying alternative database update for ${voter.username}...`);
-                        const altResult = await updatePollDataXPAlternative(pollId, voter.userId, xpAwarded, voter.email);
-                        
-                        if (altResult.success) {
-                            console.log(`✅ Alternative update successful for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
-                            updateSuccess = true;
-                        } else {
-                            console.error(`❌ Alternative update failed for ${voter.username}:`, altResult.error);
-                            
-                            // Method 3: Direct database update via new poll entry
-                            console.log(`🔄 Trying direct database update for ${voter.username}...`);
-                            const directResult = await updatePollDataDirect(pollId, voter.userId, xpAwarded, voter.email, voter.username);
-                            
-                            if (directResult.success) {
-                                console.log(`✅ Direct update successful for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
-                                updateSuccess = true;
-                            } else {
-                                console.error(`❌ All update methods failed for ${voter.username}`);
-                            }
-                        }
-                    }
-                    
-                    if (!updateSuccess) {
-                        console.error(`❌ All database update methods failed for ${voter.username}. Final XP: ${formatEDecimal(xpAwarded)}`);
-                    }
-                    
-                } catch (updateError) {
-                    console.error(`❌ Failed to update XP in database for ${voter.username}:`, updateError);
-                }
-            }
+            // Database has been updated with final data above
+            console.log(`✅ Processing completed for ${voter.username}: ${formatEDecimal(xpAwarded)} XP`);
             
             xpAwards.push({
                 userId: voter.userId,
