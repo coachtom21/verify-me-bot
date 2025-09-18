@@ -1616,12 +1616,17 @@ async function sendPollResultsToParticipants(voters, winningChoice, pollId) {
                 dmMessage += `🎯 **WINNER**\n`;
                 dmMessage += `${winningEmoji} **${winningName}**\n\n`;
                 
-                dmMessage += `💰 **YOUR XP REWARD**\n`;
-                dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
-                dmMessage += `Breakdown:\n`;
-                dmMessage += `• Base XP: 1M (for voting)\n`;
-                dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
-                dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
+                if (voter.verified) {
+                    dmMessage += `💰 **YOUR XP REWARD**\n`;
+                    dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
+                    dmMessage += `Breakdown:\n`;
+                    dmMessage += `• Base XP: 1M (for voting)\n`;
+                    dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
+                    dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
+                } else {
+                    dmMessage += `🔐 **VERIFICATION REQUIRED**\n`;
+                    dmMessage += `To earn XP rewards, please get verified by uploading your vCard to the verify-me channel.\n\n`;
+                }
                 
                 if (isWinner) {
                     dmMessage += `🎉 **CONGRATULATIONS!** Your choice won!\n\n`;
