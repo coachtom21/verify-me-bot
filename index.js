@@ -125,7 +125,7 @@ app.get('/api/poll-xp/:pollId', async (req, res) => {
             const discordPoll = JSON.parse(item.discord_poll);
             
             // Get user's XP level for voting power calculation
-            const xpLevel = discordPoll.xp_awarded || 1000000; // Use awarded XP as current level
+            const xpLevel = discordPoll.xp_awarded || 2000000; // Use awarded XP as current level
             const votingPower = getVotingPower(xpLevel);
             
             // Determine if this is a winner (we'll need to calculate this based on vote counts)
@@ -174,7 +174,7 @@ app.get('/api/poll-xp/:pollId', async (req, res) => {
 
         // Calculate total XP awarded (including bonuses)
         const xpData = processedData.map(voter => {
-            const baseXP = 1000000;
+            const baseXP = 2000000;
             const winningBonus = voter.is_winner ? 5000000 : 0;
             const topContributorBonus = voter.is_top_contributor ? 10000000 : 0;
             const totalXPAwarded = baseXP + winningBonus + topContributorBonus;
@@ -266,7 +266,7 @@ app.get('/api/polls-xp', async (req, res) => {
                     };
                 }
                 
-                const xpLevel = discordPoll.xp_awarded || 1000000;
+                const xpLevel = discordPoll.xp_awarded || 2000000;
                 const votingPower = getVotingPower(xpLevel);
                 const isTopContributor = votingPower >= 25;
                 
@@ -303,7 +303,7 @@ app.get('/api/polls-xp', async (req, res) => {
             
             // Calculate total XP awarded for this poll
             const totalXP = poll.participants.reduce((sum, participant) => {
-                const baseXP = 1000000;
+                const baseXP = 2000000;
                 const winningBonus = participant.vote === winningChoice ? 5000000 : 0;
                 const topContributorBonus = participant.is_top_contributor ? 10000000 : 0;
                 return sum + baseXP + winningBonus + topContributorBonus;
@@ -1125,7 +1125,7 @@ async function getEnhancedPollResults(messageId) {
                 results.uniqueVoters.add(user.id);
                 
                 // Calculate XP for this vote (base XP only, bonuses calculated later)
-                const baseXP = 1000000; // 1M XP for voting
+                const baseXP = 2000000; // 2M XP for voting
                 
                 console.log(`🔍 Debug: User ${user.username} - Base XP: ${baseXP}, Choice: ${choice}, Voting Power: ${votingPower}`);
                 
@@ -1293,18 +1293,18 @@ async function getUserXPLevel(userId, discordUsername) {
 
         // Fallback to simulated XP if not found in API
         console.log(`⚠️ User not found in API, using simulated XP`);
-        const baseXP = 1000000; // 1M XP base
+        const baseXP = 2000000; // 2M XP base
         const randomMultiplier = Math.floor(Math.random() * 100) + 1;
         return baseXP * randomMultiplier;
     } catch (error) {
         console.error('Error getting user XP level:', error);
-        return 1000000; // Default to 1M XP
+        return 2000000; // Default to 2M XP
     }
 }
 
 // Calculate XP rewards for poll participation
 function calculatePollXP(voter, winningChoice) {
-    const baseXP = 2000000;        // 1M XP for voting
+    const baseXP = 2000000;        // 2M XP for voting
     const winningBonus = 5000000;  // 5M XP if your choice wins
     const topContributor = 10000000; // 10M XP for top contributors
     
@@ -1339,7 +1339,7 @@ async function awardPollXP(voters, winningChoice, pollId) {
                 choice: voter.choice,
                 voting_power: voter.votingPower,
                 xp_breakdown: {
-                    base: 1000000,
+                    base: 2000000,
                     winning_bonus: voter.choice === winningChoice ? 5000000 : 0,
                     top_contributor: voter.votingPower >= 25 ? 10000000 : 0
                 }
@@ -2629,7 +2629,7 @@ client.on('messageCreate', async (message) => {
                         
                         Object.values(userData).forEach((user, index) => {
                             const finalRecord = user.records.find(r => r.is_final) || user.records[0];
-                            const isWinner = finalRecord.xp_awarded > 1000000;
+                            const isWinner = finalRecord.xp_awarded > 2000000;
                             
                             responseText += `${index + 1}. **${user.username}**\n`;
                             responseText += `   • Email: ${user.email}\n`;
