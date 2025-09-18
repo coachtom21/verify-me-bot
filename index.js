@@ -2294,27 +2294,8 @@ client.on('messageCreate', async (message) => {
             const xpResult = await awardPollXP(participationVoters, participationWinningChoice, messageId);
             console.log(`🔍 XP award result:`, xpResult);
             
-            // Show detailed participant information with XP and verification status
-            if (participationVoters.length > 0) {
-                let participantDetails = '\n👥 **Participant Details:**\n';
-                
-                participationVoters.forEach((voter, index) => {
-                    const isWinner = voter.choice === participationWinningChoice;
-                    const isTopContributor = voter.votingPower >= 25;
-                    const xpAwarded = calculatePollXP(voter, participationWinningChoice);
-                    
-                    participantDetails += `\n**${index + 1}. ${voter.displayName || voter.username}**\n`;
-                    participantDetails += `   • **Choice:** ${voter.choice} ${isWinner ? '✅ (Winner)' : ''}\n`;
-                    participantDetails += `   • **Verified:** ${voter.verified ? '✅ Yes' : '❌ No'}\n`;
-                    participantDetails += `   • **XP Level:** ${formatEDecimal(voter.xpLevel)}\n`;
-                    participantDetails += `   • **Voting Power:** ${voter.votingPower}x\n`;
-                    participantDetails += `   • **XP Awarded:** ${formatEDecimal(xpAwarded)} XP\n`;
-                    participantDetails += `   • **Breakdown:** 1M (base) + ${isWinner ? '5M (winner)' : '0M'} + ${isTopContributor ? '10M (top contributor)' : '0M'}\n`;
-                });
-                
-                // Send participant details as a separate message
-                await message.reply(participantDetails);
-            } else {
+            // Check if participants were found
+            if (participationVoters.length === 0) {
                 await message.reply('\n❌ **No participants found in this poll.**\n\n**Possible reasons:**\n• No one has voted yet\n• Poll reactions were cleared\n• Bot doesn\'t have permission to read reactions');
             }
             
