@@ -1304,7 +1304,7 @@ async function getUserXPLevel(userId, discordUsername) {
 
 // Calculate XP rewards for poll participation
 function calculatePollXP(voter, winningChoice) {
-    const baseXP = 1000000;        // 1M XP for voting
+    const baseXP = 2000000;        // 1M XP for voting
     const winningBonus = 5000000;  // 5M XP if your choice wins
     const topContributor = 10000000; // 10M XP for top contributors
     
