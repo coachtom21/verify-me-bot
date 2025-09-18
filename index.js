@@ -1590,6 +1590,74 @@ async function getPollParticipants(messageId) {
     }
 }
 
+// Send poll results to participants via direct message
+async function sendPollResultsToParticipants(voters, winningChoice, pollId) {
+    try {
+        console.log(`📤 Sending poll results to ${voters.length} participants...`);
+        
+        const winningEmoji = winningChoice === 'peace' ? '🕊️' : winningChoice === 'voting' ? '🗳️' : '🆘';
+        const winningName = winningChoice === 'peace' ? 'Peace Initiatives' : winningChoice === 'voting' ? 'Voting Programs' : 'Disaster Relief';
+        
+        for (const voter of voters) {
+            try {
+                const isWinner = voter.choice === winningChoice;
+                const isTopContributor = voter.votingPower >= 25;
+                const xpAwarded = calculatePollXP(voter, winningChoice);
+                
+                // Create personalized message
+                let dmMessage = `🏆 **POLL RESULTS ARE OUT!**\n`;
+                dmMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+                
+                dmMessage += `📊 **YOUR VOTE**\n`;
+                dmMessage += `Choice: ${voter.choice}\n`;
+                dmMessage += `Voting Power: ${voter.votingPower}x\n`;
+                dmMessage += `Verified: ${voter.verified ? '✅ Yes' : '❌ No'}\n\n`;
+                
+                dmMessage += `🎯 **WINNER**\n`;
+                dmMessage += `${winningEmoji} **${winningName}**\n\n`;
+                
+                dmMessage += `💰 **YOUR XP REWARD**\n`;
+                dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
+                dmMessage += `Breakdown:\n`;
+                dmMessage += `• Base XP: 1M (for voting)\n`;
+                dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
+                dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
+                
+                if (isWinner) {
+                    dmMessage += `🎉 **CONGRATULATIONS!** Your choice won!\n\n`;
+                }
+                
+                if (isTopContributor) {
+                    dmMessage += `👑 **TOP CONTRIBUTOR!** You have 25x+ voting power!\n\n`;
+                }
+                
+                dmMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+                dmMessage += `Make Everyone Great Again • SmallStreet Governance`;
+                
+                // Send DM to user
+                const user = await client.users.fetch(voter.userId);
+                if (user) {
+                    await user.send(dmMessage);
+                    console.log(`✅ Sent poll results DM to ${voter.username}`);
+                } else {
+                    console.log(`⚠️ Could not find user ${voter.username} (${voter.userId}) for DM`);
+                }
+                
+                // Add small delay to avoid rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+            } catch (dmError) {
+                console.error(`❌ Failed to send DM to ${voter.username}:`, dmError.message);
+            }
+        }
+        
+        console.log(`✅ Finished sending poll results to participants`);
+        
+    } catch (error) {
+        console.error('❌ Error sending poll results to participants:', error);
+    }
+}
+
 // Display enhanced poll results
 async function displayEnhancedPollResults(messageId) {
     try {
@@ -1651,6 +1719,9 @@ async function displayEnhancedPollResults(messageId) {
 
         const channel = client.channels.cache.get(process.env.MONTHLY_REDEMPTION_CHANNEL_ID);
         await channel.send({ embeds: [resultsEmbed] });
+
+        // Send direct messages to all participants
+        await sendPollResultsToParticipants(allVoters, winningChoice, messageId);
 
         return { success: true, data: { results: data, allocation, winningChoice, xpResult } };
     } catch (error) {
