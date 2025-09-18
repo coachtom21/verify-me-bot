@@ -25,6 +25,54 @@ app.get('/', (req, res) => {
     });
 });
 
+// Debug endpoint to test API calls
+app.get('/api/debug-participation/:pollId', async (req, res) => {
+    try {
+        const { pollId } = req.params;
+        console.log(`🔍 Debug API: Testing participation for poll ${pollId}`);
+        
+        // Simulate the !participation command
+        const results = await getEnhancedPollResults(pollId);
+        
+        if (!results.success) {
+            return res.status(400).json({
+                success: false,
+                error: results.error,
+                message: 'Failed to get poll results'
+            });
+        }
+        
+        const data = results.data;
+        const participationVoters = [
+            ...data.peace.voters,
+            ...data.voting.voters,
+            ...data.disaster.voters
+        ];
+        
+        const winningChoice = data.peace.weighted > data.voting.weighted && data.peace.weighted > data.disaster.weighted ? 'peace' :
+                            data.voting.weighted > data.disaster.weighted ? 'voting' : 'disaster';
+        
+        // Award XP to all participants
+        const xpResult = await awardPollXP(participationVoters, winningChoice, pollId);
+        
+        res.json({
+            success: true,
+            pollId: pollId,
+            winningChoice: winningChoice,
+            totalVoters: participationVoters.length,
+            xpResult: xpResult,
+            message: 'Participation processed successfully'
+        });
+        
+    } catch (error) {
+        console.error('Debug API Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // API endpoint to get poll awarded XP data from SmallStreet API
 app.get('/api/poll-xp/:pollId', async (req, res) => {
     try {
@@ -1655,7 +1703,7 @@ client.once('ready', async () => {
     try {
         // Test API connection on startup
         console.log('🧪 Testing API connection on startup...');
-        console.log(`🧪 Startup API Test Result:`, apiTest);
+        // Note: API test removed to prevent startup errors
         
         // Clear any existing bot messages in the verification channel
         const channel = client.channels.cache.get(process.env.VERIFY_CHANNEL_ID);
