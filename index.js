@@ -1839,9 +1839,18 @@ client.once('ready', async () => {
                 (msg.content.includes('Bot is online') || msg.content.includes('Make Everyone Great Again'))
             );
             
-            // Delete old bot messages
+            // Delete old bot messages (only if they're under 14 days old)
             if (botMessages.size > 0) {
-                await channel.bulkDelete(botMessages).catch(console.error);
+                try {
+                    await channel.bulkDelete(botMessages);
+                    console.log(`✅ Deleted ${botMessages.size} old bot messages`);
+                } catch (error) {
+                    if (error.code === 50034) {
+                        console.log(`⚠️ Cannot bulk delete messages older than 14 days, skipping cleanup`);
+                    } else {
+                        console.error('❌ Error deleting old messages:', error.message);
+                    }
+                }
             }
             
         // Send new startup message
