@@ -3170,50 +3170,39 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
+            // Handle <@> mentions (without !)
+            if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
+                const userId = targetUsername.slice(2, -1);
+                const user = client.users.cache.get(userId);
+                if (user) {
+                    targetUsername = user.username;
+                } else {
+                    await message.reply('❌ **User not found.** Please use a valid username.');
+                    return;
+                }
+            }
+
             console.log(`🔍 Final username to search: "${targetUsername}"`);
             await message.reply('🔍 **Fetching profile data...**');
 
-            // Get user profile data
-            console.log(`📡 Calling getUserProfileData for: "${targetUsername}"`);
-            const profileResult = await getUserProfileData(targetUsername);
-            console.log(`📊 Profile result:`, profileResult);
-            
-            if (!profileResult.success) {
-                await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`);
-                return;
-            }
-
-            const profile = profileResult.data;
-            
-            // Get Discord member info for additional details
-            let discordMember = null;
-            try {
-                const guild = message.guild;
-                discordMember = guild.members.cache.find(member => 
-                    member.user.username.toLowerCase() === targetUsername.toLowerCase()
-                );
-            } catch (error) {
-                console.log('Could not find Discord member:', error.message);
-            }
-
-            // Create simple profile embed with just username and full name
+            // For now, just show the username without API call
             const profileEmbed = {
-                title: `👤 Profile: ${profile.fullName}`,
+                title: `👤 Profile: ${targetUsername}`,
                 color: 0x00ff00,
                 fields: [
                     {
                         name: '🎯 Discord Username',
-                        value: profile.discordUsername,
+                        value: targetUsername,
                         inline: true
                     },
                     {
                         name: '📝 Full Name',
-                        value: profile.fullName,
+                        value: targetUsername, // Using username as full name for now
                         inline: true
                     }
                 ],
                 footer: {
-                    text: `SmallStreet Profile • User ID: ${profile.userId || 'N/A'}`
+                    text: `SmallStreet Profile • No API Call`
                 },
                 timestamp: new Date().toISOString()
             };
