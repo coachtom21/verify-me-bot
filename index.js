@@ -3140,9 +3140,11 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Handle profile command in wallet channel
-    if (message.content.startsWith('/profile ') && message.channel.name === 'wallet') {
+    // Handle profile command (works in any channel for now)
+    if (message.content.startsWith('/profile ')) {
         try {
+            console.log(`🔍 Profile command received: "${message.content}" in channel: ${message.channel.name}`);
+            
             // Extract username from the command
             const args = message.content.split(' ');
             if (args.length < 2) {
@@ -3151,6 +3153,7 @@ client.on('messageCreate', async (message) => {
             }
 
             let targetUsername = args[1];
+            console.log(`🎯 Target username extracted: "${targetUsername}"`);
             
             // Remove @ symbol if present
             if (targetUsername.startsWith('@')) {
@@ -3169,10 +3172,13 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
+            console.log(`🔍 Final username to search: "${targetUsername}"`);
             await message.reply('🔍 **Fetching profile data...**');
 
             // Get user profile data
+            console.log(`📡 Calling getUserProfileData for: "${targetUsername}"`);
             const profileResult = await getUserProfileData(targetUsername);
+            console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
                 await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`);
@@ -3290,6 +3296,49 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('Profile command error:', error);
             await message.reply(`❌ **Error displaying profile:** ${error.message}`);
+        }
+        return;
+    }
+
+    // Handle test profile command (for debugging)
+    if (message.content.startsWith('/testprofile ')) {
+        try {
+            const args = message.content.split(' ');
+            if (args.length < 2) {
+                await message.reply('❌ **Usage:** `/testprofile username`');
+                return;
+            }
+
+            const username = args[1];
+            
+            const testEmbed = {
+                title: `🧪 Test Profile: ${username}`,
+                color: 0x00ff00,
+                fields: [
+                    {
+                        name: '🎯 Username',
+                        value: username,
+                        inline: true
+                    },
+                    {
+                        name: '📊 Status',
+                        value: 'Test Mode - No API Call',
+                        inline: true
+                    },
+                    {
+                        name: '💰 Test XP',
+                        value: '1.0e+6',
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Test Profile Command'
+                }
+            };
+
+            await message.reply({ embeds: [testEmbed] });
+        } catch (error) {
+            await message.reply(`❌ **Test Error:** ${error.message}`);
         }
         return;
     }
