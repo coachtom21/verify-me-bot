@@ -44,7 +44,7 @@ npm start
 ### Profile Command
 View user profile details including XP, roles, and membership status:
 
-**Usage:** `/profile @username` or `/profile username`
+**Usage:** `!profile @username` or `!profile username`
 
 **Location:** Only works in the `#wallet` channel (set via `WALLET_CHANNEL_ID` environment variable)
 

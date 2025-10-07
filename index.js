@@ -3177,14 +3177,14 @@ client.on('messageCreate', async (message) => {
     }
 
     // Handle profile command in wallet channel
-    if (message.content.startsWith('/profile ') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
+    if (message.content.startsWith('!profile ') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
         try {
             console.log(`🔍 Profile command received: "${message.content}" in channel: ${message.channel.name}`);
             
             // Extract username from the command
             const args = message.content.split(' ');
             if (args.length < 2) {
-                await message.reply('❌ **Usage:** `/profile @username` or `/profile username`');
+                await message.reply('❌ **Usage:** `!profile @username` or `!profile username`');
                 return;
             }
 
@@ -3379,11 +3379,11 @@ client.on('messageCreate', async (message) => {
     }
 
     // Handle test profile command (for debugging)
-    if (message.content.startsWith('/testprofile ')) {
+    if (message.content.startsWith('!testprofile ')) {
         try {
             const args = message.content.split(' ');
             if (args.length < 2) {
-                await message.reply('❌ **Usage:** `/testprofile username`');
+                await message.reply('❌ **Usage:** `!testprofile username`');
                 return;
             }
 
