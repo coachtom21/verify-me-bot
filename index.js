@@ -1364,23 +1364,12 @@ async function getUserProfileData(discordUsername) {
         if (!response.ok) {
             console.error(`❌ API Error: ${response.status} - ${response.statusText}`);
             // Return default profile for API errors
-            const defaultXP = 1000000;
             return {
                 success: true,
                 data: {
                     userId: null,
-                    email: null,
                     discordUsername: discordUsername,
-                    xpLevel: defaultXP,
-                    votingPower: 1,
-                    membership: 'unverified',
-                    roles: [],
-                    profileImage: null,
-                    fullName: discordUsername,
-                    joinDate: null,
-                    lastActive: null,
-                    totalXP: defaultXP,
-                    formattedXP: formatEDecimal(defaultXP)
+                    fullName: discordUsername
                 }
             };
         }
@@ -1391,49 +1380,22 @@ async function getUserProfileData(discordUsername) {
         if (apiData && apiData.success && apiData.data) {
             const userData = apiData.data;
             
-            // Get XP level
-            const xpLevel = userData.total_xp || userData.xp_awarded || 1000000;
-            
-            // Get voting power
-            const votingPower = getVotingPower(xpLevel);
-            
             return {
                 success: true,
                 data: {
                     userId: userData.user_id || userData.id,
-                    email: userData.email,
                     discordUsername: discordUsername,
-                    xpLevel: xpLevel,
-                    votingPower: votingPower,
-                    membership: userData.membership || userData.status || 'unverified',
-                    roles: userData.roles || [],
-                    profileImage: userData.profile_image || userData.avatar,
-                    fullName: userData.full_name || userData.display_name || discordUsername,
-                    joinDate: userData.join_date || userData.created_at,
-                    lastActive: userData.last_active || userData.updated_at,
-                    totalXP: xpLevel,
-                    formattedXP: formatEDecimal(xpLevel)
+                    fullName: userData.full_name || userData.display_name || discordUsername
                 }
             };
         } else {
             // Return default profile for unverified users
-            const defaultXP = 1000000;
             return {
                 success: true,
                 data: {
                     userId: null,
-                    email: null,
                     discordUsername: discordUsername,
-                    xpLevel: defaultXP,
-                    votingPower: 1,
-                    membership: 'unverified',
-                    roles: [],
-                    profileImage: null,
-                    fullName: discordUsername,
-                    joinDate: null,
-                    lastActive: null,
-                    totalXP: defaultXP,
-                    formattedXP: formatEDecimal(defaultXP)
+                    fullName: discordUsername
                 }
             };
         }
@@ -3234,13 +3196,10 @@ client.on('messageCreate', async (message) => {
                 console.log('Could not find Discord member:', error.message);
             }
 
-            // Create profile embed
+            // Create simple profile embed with just username and full name
             const profileEmbed = {
                 title: `👤 Profile: ${profile.fullName}`,
-                color: profile.membership === 'verified' ? 0x00ff00 : 0xffa500,
-                thumbnail: {
-                    url: profile.profileImage || (discordMember ? discordMember.user.displayAvatarURL() : null) || 'https://cdn.discordapp.com/embed/avatars/0.png'
-                },
+                color: 0x00ff00,
                 fields: [
                     {
                         name: '🎯 Discord Username',
@@ -3248,34 +3207,9 @@ client.on('messageCreate', async (message) => {
                         inline: true
                     },
                     {
-                        name: '📧 Email',
-                        value: profile.email || 'Not verified',
+                        name: '📝 Full Name',
+                        value: profile.fullName,
                         inline: true
-                    },
-                    {
-                        name: '🏆 Membership Status',
-                        value: profile.membership === 'verified' ? '✅ Verified' : '⚠️ Unverified',
-                        inline: true
-                    },
-                    {
-                        name: '💰 Total XP',
-                        value: `**${profile.formattedXP}**`,
-                        inline: true
-                    },
-                    {
-                        name: '⚡ Voting Power',
-                        value: `**${profile.votingPower}x**`,
-                        inline: true
-                    },
-                    {
-                        name: '🎭 Discord Roles',
-                        value: discordMember ? 
-                            discordMember.roles.cache
-                                .filter(role => role.name !== '@everyone')
-                                .map(role => role.name)
-                                .join(', ') || 'No roles' : 
-                            'Not in server',
-                        inline: false
                     }
                 ],
                 footer: {
@@ -3283,49 +3217,6 @@ client.on('messageCreate', async (message) => {
                 },
                 timestamp: new Date().toISOString()
             };
-
-            // Add additional fields if available
-            if (profile.joinDate) {
-                profileEmbed.fields.push({
-                    name: '📅 Join Date',
-                    value: new Date(profile.joinDate).toLocaleDateString(),
-                    inline: true
-                });
-            }
-
-            if (profile.lastActive) {
-                profileEmbed.fields.push({
-                    name: '🕒 Last Active',
-                    value: new Date(profile.lastActive).toLocaleDateString(),
-                    inline: true
-                });
-            }
-
-            // Add XP breakdown if user is verified
-            if (profile.membership === 'verified') {
-                const additionalXP = Math.max(0, profile.totalXP - 1000000);
-                profileEmbed.fields.push({
-                    name: '📊 XP Breakdown',
-                    value: `• Base XP: ${formatEDecimal(1000000)}\n• Additional XP: ${formatEDecimal(additionalXP)}\n• Total: **${profile.formattedXP}**`,
-                    inline: false
-                });
-            }
-
-            // Add voting power tier information
-            let powerTier = '';
-            if (profile.votingPower >= 100) powerTier = '🌟 Maximum Power';
-            else if (profile.votingPower >= 50) powerTier = '👑 Elite Contributor';
-            else if (profile.votingPower >= 25) powerTier = '⭐ Top Contributor';
-            else if (profile.votingPower >= 10) powerTier = '🔥 High Contributor';
-            else if (profile.votingPower >= 5) powerTier = '💪 Active Member';
-            else if (profile.votingPower >= 2) powerTier = '📈 Growing Member';
-            else powerTier = '🌱 New Member';
-
-            profileEmbed.fields.push({
-                name: '🏅 Power Tier',
-                value: powerTier,
-                inline: true
-            });
 
             await message.reply({ embeds: [profileEmbed] });
 
