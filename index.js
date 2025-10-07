@@ -1343,6 +1343,73 @@ async function getUserXPLevel(userId, discordUsername) {
     }
 }
 
+// Function to get comprehensive user profile data
+async function getUserProfileData(discordUsername) {
+    try {
+        console.log(`🔍 Fetching profile data for user: ${discordUsername}`);
+        
+        // Get user data from Discord invites API
+        const userCheck = await checkUserInDiscordInvites(discordUsername);
+        
+        if (userCheck.exists && userCheck.userData) {
+            const userData = userCheck.userData;
+            const discordData = userData.discordData;
+            
+            // Get XP level
+            const xpLevel = discordData.xp_awarded || 1000000;
+            
+            // Get voting power
+            const votingPower = getVotingPower(xpLevel);
+            
+            return {
+                success: true,
+                data: {
+                    userId: userData.userId,
+                    email: userData.email,
+                    discordUsername: discordUsername,
+                    xpLevel: xpLevel,
+                    votingPower: votingPower,
+                    membership: discordData.membership || 'unverified',
+                    roles: discordData.roles || [],
+                    profileImage: discordData.profile_image || null,
+                    fullName: discordData.full_name || discordUsername,
+                    joinDate: discordData.join_date || null,
+                    lastActive: discordData.last_active || null,
+                    totalXP: xpLevel,
+                    formattedXP: formatEDecimal(xpLevel)
+                }
+            };
+        } else {
+            // Return default profile for unverified users
+            const defaultXP = 1000000;
+            return {
+                success: true,
+                data: {
+                    userId: null,
+                    email: null,
+                    discordUsername: discordUsername,
+                    xpLevel: defaultXP,
+                    votingPower: 1,
+                    membership: 'unverified',
+                    roles: [],
+                    profileImage: null,
+                    fullName: discordUsername,
+                    joinDate: null,
+                    lastActive: null,
+                    totalXP: defaultXP,
+                    formattedXP: formatEDecimal(defaultXP)
+                }
+            };
+        }
+    } catch (error) {
+        console.error('Error getting user profile data:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
 // Calculate XP rewards for poll participation
 function calculatePollXP(voter, winningChoice) {
     const baseXP = 1000000;        // 1M XP for voting
@@ -1624,8 +1691,14 @@ async function sendPollResultsToParticipants(voters, winningChoice, pollId) {
                     dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
                     dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
                 } else {
+                    dmMessage += `💰 **YOUR XP REWARD**\n`;
+                    dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
+                    dmMessage += `Breakdown:\n`;
+                    dmMessage += `• Base XP: 1M (for voting)\n`;
+                    dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
+                    dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
                     dmMessage += `🔐 **VERIFICATION REQUIRED**\n`;
-                    dmMessage += `To earn XP rewards, please get verified by uploading your vCard to the #verify-me channel.\n\n`;
+                    dmMessage += `You are not verified, so first get verified by uploading your vCard and get verified, then only you will be awarded with the XP.\n\n`;
                 }
                 
                 if (isWinner) {
@@ -3063,6 +3136,160 @@ client.on('messageCreate', async (message) => {
             await message.reply({ embeds: [helpEmbed] });
         } catch (error) {
             await message.reply(`❌ Help command failed: ${error.message}`);
+        }
+        return;
+    }
+
+    // Handle profile command in wallet channel
+    if (message.content.startsWith('/profile ') && message.channel.name === 'wallet') {
+        try {
+            // Extract username from the command
+            const args = message.content.split(' ');
+            if (args.length < 2) {
+                await message.reply('❌ **Usage:** `/profile @username` or `/profile username`');
+                return;
+            }
+
+            let targetUsername = args[1];
+            
+            // Remove @ symbol if present
+            if (targetUsername.startsWith('@')) {
+                targetUsername = targetUsername.substring(1);
+            }
+
+            // Remove <@!> mentions if present
+            if (targetUsername.startsWith('<@!') && targetUsername.endsWith('>')) {
+                const userId = targetUsername.slice(3, -1);
+                const user = client.users.cache.get(userId);
+                if (user) {
+                    targetUsername = user.username;
+                } else {
+                    await message.reply('❌ **User not found.** Please use a valid username.');
+                    return;
+                }
+            }
+
+            await message.reply('🔍 **Fetching profile data...**');
+
+            // Get user profile data
+            const profileResult = await getUserProfileData(targetUsername);
+            
+            if (!profileResult.success) {
+                await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`);
+                return;
+            }
+
+            const profile = profileResult.data;
+            
+            // Get Discord member info for additional details
+            let discordMember = null;
+            try {
+                const guild = message.guild;
+                discordMember = guild.members.cache.find(member => 
+                    member.user.username.toLowerCase() === targetUsername.toLowerCase()
+                );
+            } catch (error) {
+                console.log('Could not find Discord member:', error.message);
+            }
+
+            // Create profile embed
+            const profileEmbed = {
+                title: `👤 Profile: ${profile.fullName}`,
+                color: profile.membership === 'verified' ? 0x00ff00 : 0xffa500,
+                thumbnail: {
+                    url: profile.profileImage || (discordMember ? discordMember.user.displayAvatarURL() : null) || 'https://cdn.discordapp.com/embed/avatars/0.png'
+                },
+                fields: [
+                    {
+                        name: '🎯 Discord Username',
+                        value: profile.discordUsername,
+                        inline: true
+                    },
+                    {
+                        name: '📧 Email',
+                        value: profile.email || 'Not verified',
+                        inline: true
+                    },
+                    {
+                        name: '🏆 Membership Status',
+                        value: profile.membership === 'verified' ? '✅ Verified' : '⚠️ Unverified',
+                        inline: true
+                    },
+                    {
+                        name: '💰 Total XP',
+                        value: `**${profile.formattedXP}**`,
+                        inline: true
+                    },
+                    {
+                        name: '⚡ Voting Power',
+                        value: `**${profile.votingPower}x**`,
+                        inline: true
+                    },
+                    {
+                        name: '🎭 Discord Roles',
+                        value: discordMember ? 
+                            discordMember.roles.cache
+                                .filter(role => role.name !== '@everyone')
+                                .map(role => role.name)
+                                .join(', ') || 'No roles' : 
+                            'Not in server',
+                        inline: false
+                    }
+                ],
+                footer: {
+                    text: `SmallStreet Profile • User ID: ${profile.userId || 'N/A'}`
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Add additional fields if available
+            if (profile.joinDate) {
+                profileEmbed.fields.push({
+                    name: '📅 Join Date',
+                    value: new Date(profile.joinDate).toLocaleDateString(),
+                    inline: true
+                });
+            }
+
+            if (profile.lastActive) {
+                profileEmbed.fields.push({
+                    name: '🕒 Last Active',
+                    value: new Date(profile.lastActive).toLocaleDateString(),
+                    inline: true
+                });
+            }
+
+            // Add XP breakdown if user is verified
+            if (profile.membership === 'verified') {
+                const additionalXP = Math.max(0, profile.totalXP - 1000000);
+                profileEmbed.fields.push({
+                    name: '📊 XP Breakdown',
+                    value: `• Base XP: ${formatEDecimal(1000000)}\n• Additional XP: ${formatEDecimal(additionalXP)}\n• Total: **${profile.formattedXP}**`,
+                    inline: false
+                });
+            }
+
+            // Add voting power tier information
+            let powerTier = '';
+            if (profile.votingPower >= 100) powerTier = '🌟 Maximum Power';
+            else if (profile.votingPower >= 50) powerTier = '👑 Elite Contributor';
+            else if (profile.votingPower >= 25) powerTier = '⭐ Top Contributor';
+            else if (profile.votingPower >= 10) powerTier = '🔥 High Contributor';
+            else if (profile.votingPower >= 5) powerTier = '💪 Active Member';
+            else if (profile.votingPower >= 2) powerTier = '📈 Growing Member';
+            else powerTier = '🌱 New Member';
+
+            profileEmbed.fields.push({
+                name: '🏅 Power Tier',
+                value: powerTier,
+                inline: true
+            });
+
+            await message.reply({ embeds: [profileEmbed] });
+
+        } catch (error) {
+            console.error('Profile command error:', error);
+            await message.reply(`❌ **Error displaying profile:** ${error.message}`);
         }
         return;
     }

@@ -9,6 +9,7 @@ A Discord bot that verifies SmallStreet membership using QR codes and automatica
 - Contact information extraction
 - **NEW: Automatic user tracking when joining Discord server**
 - **NEW: 5M XP award for Discord invite joins**
+- **NEW: Profile command for viewing user details and XP**
 
 ## Setup
 
@@ -37,6 +38,23 @@ WELCOME_CHANNEL_ID=your_welcome_channel_id
 ```bash
 npm start
 ```
+
+## Commands
+
+### Profile Command
+View user profile details including XP, roles, and membership status:
+
+**Usage:** `/profile @username` or `/profile username`
+
+**Location:** Only works in the `#wallet` channel
+
+**Features:**
+- Displays user's Discord username and avatar
+- Shows total XP and voting power
+- Lists Discord server roles
+- Shows membership verification status
+- Displays XP breakdown for verified users
+- Shows power tier based on XP level
 
 ## Environment Variables
 
