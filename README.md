@@ -46,7 +46,9 @@ View user profile details including XP, roles, and membership status:
 
 **Usage:** `/profile @username` or `/profile username`
 
-**Location:** Only works in the `#wallet` channel
+**Location:** Only works in the `#wallet` channel (set via `WALLET_CHANNEL_ID` environment variable)
+
+**API Endpoint:** `https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data`
 
 **Features:**
 - Displays user's Discord username and avatar
@@ -64,6 +66,7 @@ View user profile details including XP, roles, and membership status:
 - `PATRON_ROLE_ID`: Role ID for Patron members
 - `SMALLSTREET_API_KEY`: API key for SmallStreet database operations
 - `WELCOME_CHANNEL_ID`: ID of the channel for welcome messages (optional)
+- `WALLET_CHANNEL_ID`: ID of the wallet channel for profile commands
 
 ## Deployment
 

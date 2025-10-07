@@ -1348,15 +1348,51 @@ async function getUserProfileData(discordUsername) {
     try {
         console.log(`🔍 Fetching profile data for user: ${discordUsername}`);
         
-        // Get user data from Discord invites API
-        const userCheck = await checkUserInDiscordInvites(discordUsername);
-        
-        if (userCheck.exists && userCheck.userData) {
-            const userData = userCheck.userData;
-            const discordData = userData.discordData;
+        // Call the user XP data API
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify({
+                discord_username: discordUsername
+            })
+        });
+
+        if (!response.ok) {
+            console.error(`❌ API Error: ${response.status} - ${response.statusText}`);
+            // Return default profile for API errors
+            const defaultXP = 1000000;
+            return {
+                success: true,
+                data: {
+                    userId: null,
+                    email: null,
+                    discordUsername: discordUsername,
+                    xpLevel: defaultXP,
+                    votingPower: 1,
+                    membership: 'unverified',
+                    roles: [],
+                    profileImage: null,
+                    fullName: discordUsername,
+                    joinDate: null,
+                    lastActive: null,
+                    totalXP: defaultXP,
+                    formattedXP: formatEDecimal(defaultXP)
+                }
+            };
+        }
+
+        const apiData = await response.json();
+        console.log(`📊 API Response for ${discordUsername}:`, apiData);
+
+        if (apiData && apiData.success && apiData.data) {
+            const userData = apiData.data;
             
             // Get XP level
-            const xpLevel = discordData.xp_awarded || 1000000;
+            const xpLevel = userData.total_xp || userData.xp_awarded || 1000000;
             
             // Get voting power
             const votingPower = getVotingPower(xpLevel);
@@ -1364,17 +1400,17 @@ async function getUserProfileData(discordUsername) {
             return {
                 success: true,
                 data: {
-                    userId: userData.userId,
+                    userId: userData.user_id || userData.id,
                     email: userData.email,
                     discordUsername: discordUsername,
                     xpLevel: xpLevel,
                     votingPower: votingPower,
-                    membership: discordData.membership || 'unverified',
-                    roles: discordData.roles || [],
-                    profileImage: discordData.profile_image || null,
-                    fullName: discordData.full_name || discordUsername,
-                    joinDate: discordData.join_date || null,
-                    lastActive: discordData.last_active || null,
+                    membership: userData.membership || userData.status || 'unverified',
+                    roles: userData.roles || [],
+                    profileImage: userData.profile_image || userData.avatar,
+                    fullName: userData.full_name || userData.display_name || discordUsername,
+                    joinDate: userData.join_date || userData.created_at,
+                    lastActive: userData.last_active || userData.updated_at,
                     totalXP: xpLevel,
                     formattedXP: formatEDecimal(xpLevel)
                 }
@@ -3140,8 +3176,8 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Handle profile command (works in any channel for now)
-    if (message.content.startsWith('/profile ')) {
+    // Handle profile command in wallet channel
+    if (message.content.startsWith('/profile ') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
         try {
             console.log(`🔍 Profile command received: "${message.content}" in channel: ${message.channel.name}`);
             
@@ -3296,6 +3332,48 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('Profile command error:', error);
             await message.reply(`❌ **Error displaying profile:** ${error.message}`);
+        }
+        return;
+    }
+
+    // Handle wallet channel check command
+    if (message.content === '!checkwallet' && message.author.id === process.env.ADMIN_USER_ID) {
+        try {
+            const walletChannel = client.channels.cache.get(process.env.WALLET_CHANNEL_ID);
+            
+            const checkEmbed = {
+                title: '🔍 Wallet Channel Check',
+                color: walletChannel ? 0x00ff00 : 0xff0000,
+                fields: [
+                    {
+                        name: '📋 Environment Variable',
+                        value: `WALLET_CHANNEL_ID: ${process.env.WALLET_CHANNEL_ID || 'Not set'}`,
+                        inline: false
+                    },
+                    {
+                        name: '📍 Channel Status',
+                        value: walletChannel ? `✅ Found: ${walletChannel.name}` : '❌ Not found',
+                        inline: false
+                    },
+                    {
+                        name: '🎯 Current Channel',
+                        value: `Name: ${message.channel.name}\nID: ${message.channel.id}`,
+                        inline: false
+                    },
+                    {
+                        name: '🔗 API Endpoint',
+                        value: 'https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data',
+                        inline: false
+                    }
+                ],
+                footer: {
+                    text: 'Wallet Channel Check'
+                }
+            };
+
+            await message.reply({ embeds: [checkEmbed] });
+        } catch (error) {
+            await message.reply(`❌ **Channel Check Error:** ${error.message}`);
         }
         return;
     }
