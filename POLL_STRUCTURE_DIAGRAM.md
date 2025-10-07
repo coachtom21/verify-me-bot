@@ -168,3 +168,8 @@ XP Awarding:
 
 *This diagram illustrates the complete structure and flow of the poll system in the VerifyMe Bot.*
 
+
+
+
+
+
