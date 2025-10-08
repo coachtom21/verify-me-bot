@@ -1819,18 +1819,18 @@ async function sendPollResultsToParticipants(voters, winningChoice, pollId) {
                 
                 if (voter.verified) {
                     dmMessage += `💰 **YOUR XP REWARD**\n`;
-                    dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
+                    dmMessage += `Total XP: ${formatXPNumber(xpAwarded)} (${formatEDecimal(xpAwarded)})\n`;
                     dmMessage += `Breakdown:\n`;
-                    dmMessage += `• Base XP: 1M (for voting)\n`;
-                    dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
-                    dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
+                    dmMessage += `• Base XP: 1,000,000 (for voting)\n`;
+                    dmMessage += `• Winner Bonus: ${isWinner ? '5,000,000 ✅' : '0'}\n`;
+                    dmMessage += `• Top Contributor: ${isTopContributor ? '10,000,000 ✅' : '0'}\n\n`;
                 } else {
                     dmMessage += `💰 **YOUR XP REWARD**\n`;
-                    dmMessage += `Total XP: ${formatEDecimal(xpAwarded)}\n`;
+                    dmMessage += `Total XP: ${formatXPNumber(xpAwarded)} (${formatEDecimal(xpAwarded)})\n`;
                     dmMessage += `Breakdown:\n`;
-                    dmMessage += `• Base XP: 1M (for voting)\n`;
-                    dmMessage += `• Winner Bonus: ${isWinner ? '5M ✅' : '0M'}\n`;
-                    dmMessage += `• Top Contributor: ${isTopContributor ? '10M ✅' : '0M'}\n\n`;
+                    dmMessage += `• Base XP: 1,000,000 (for voting)\n`;
+                    dmMessage += `• Winner Bonus: ${isWinner ? '5,000,000 ✅' : '0'}\n`;
+                    dmMessage += `• Top Contributor: ${isTopContributor ? '10,000,000 ✅' : '0'}\n\n`;
                     dmMessage += `🔐 **VERIFICATION REQUIRED**\n`;
                     dmMessage += `You are not verified, so first get verified by uploading your vCard and get verified, then only you will be awarded with the XP.\n\n`;
                 }
