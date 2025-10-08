@@ -1417,6 +1417,43 @@ async function getUserProfileData(discordUsername) {
                     console.log('Could not parse buyer details:', error.message);
                 }
                 
+                // Get comprehensive XP data from user-xp-data API
+                let totalXP = discordInvite.xp_awarded || 0;
+                try {
+                    console.log(`📡 Fetching comprehensive XP data for user: ${record.user_id}`);
+                    const xpResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+                    });
+
+                    if (xpResponse.ok) {
+                        const xpData = await xpResponse.json();
+                        console.log(`📊 XP Data API Response:`, xpData);
+                        
+                        // Look for user's XP data
+                        if (xpData && Array.isArray(xpData)) {
+                            const userXPRecord = xpData.find(xpRecord => 
+                                xpRecord.user_id === record.user_id || 
+                                xpRecord.email === record.email
+                            );
+                            
+                            if (userXPRecord && userXPRecord.total_xp) {
+                                totalXP = userXPRecord.total_xp;
+                                console.log(`✅ Found comprehensive XP data: ${totalXP}`);
+                            } else {
+                                console.log(`⚠️ No comprehensive XP data found, using Discord invite XP: ${totalXP}`);
+                            }
+                        }
+                    } else {
+                        console.log(`⚠️ XP Data API not available (${xpResponse.status}), using Discord invite XP: ${totalXP}`);
+                    }
+                } catch (xpError) {
+                    console.log(`⚠️ Error fetching comprehensive XP data: ${xpError.message}, using Discord invite XP: ${totalXP}`);
+                }
+
                 return {
                     success: true,
                     data: {
@@ -1425,7 +1462,7 @@ async function getUserProfileData(discordUsername) {
                         fullName: discordInvite.discord_display_name || record.email,
                         email: record.email,
                         membership: membershipName,
-                        totalXP: discordInvite.xp_awarded || 0,
+                        totalXP: totalXP,
                         discordId: discordInvite.discord_id,
                         joinDate: discordInvite.joined_at,
                         verificationDate: discordInvite.verification_date
