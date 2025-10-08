@@ -3214,7 +3214,7 @@ client.on('messageCreate', async (message) => {
             // Extract username from the command
             const args = message.content.split(' ');
             if (args.length < 2) {
-                await message.reply('❌ **Usage:** `!profile @username` or `!profile username`', { ephemeral: true });
+                await message.author.send('❌ **Usage:** `!profile @username` or `!profile username`');
                 return;
             }
 
@@ -3239,7 +3239,7 @@ client.on('messageCreate', async (message) => {
                     actualUsername = discordUser.username;
                     console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
                 } else {
-                    await message.reply('❌ **User not found.** Please use a valid Discord mention.', { ephemeral: true });
+                    await message.author.send('❌ **User not found.** Please use a valid Discord mention.');
                     return;
                 }
             } else if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
@@ -3250,7 +3250,7 @@ client.on('messageCreate', async (message) => {
                     actualUsername = discordUser.username;
                     console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
                 } else {
-                    await message.reply('❌ **User not found.** Please use a valid Discord mention.', { ephemeral: true });
+                    await message.author.send('❌ **User not found.** Please use a valid Discord mention.');
                     return;
                 }
             }
@@ -3259,10 +3259,10 @@ client.on('messageCreate', async (message) => {
             
             // Check if username is empty or just spaces
             if (!actualUsername || actualUsername.trim() === '') {
-                await message.reply('❌ **Invalid username.** Please provide a valid username.', { ephemeral: true });
+                await message.author.send('❌ **Invalid username.** Please provide a valid username.');
                 return;
             }
-            await message.reply('🔍 **Fetching profile data...**', { ephemeral: true });
+            await message.author.send('🔍 **Fetching profile data...**');
 
             // Try to get user profile data from API
             console.log(`📡 Calling getUserProfileData for: "${actualUsername}"`);
@@ -3270,7 +3270,7 @@ client.on('messageCreate', async (message) => {
             console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
-                await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`, { ephemeral: true });
+                await message.author.send(`❌ **Error fetching profile:** ${profileResult.error}`);
                 return;
             }
 
@@ -3361,11 +3361,11 @@ client.on('messageCreate', async (message) => {
                 });
             }
 
-            await message.reply({ embeds: [profileEmbed], ephemeral: true });
+            await message.author.send({ embeds: [profileEmbed] });
 
         } catch (error) {
             console.error('Profile command error:', error);
-            await message.reply(`❌ **Error displaying profile:** ${error.message}`, { ephemeral: true });
+            await message.author.send(`❌ **Error displaying profile:** ${error.message}`);
         }
         return;
     }
