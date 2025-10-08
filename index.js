@@ -1417,42 +1417,72 @@ async function getUserProfileData(discordUsername) {
                     console.log('Could not parse buyer details:', error.message);
                 }
                 
-                // Get comprehensive XP data from user-xp-data API
-                let totalXP = discordInvite.xp_awarded || 0;
+                // Calculate total XP by summing from all meta keys
+                let totalXP = 0;
+                console.log(`🧮 Calculating total XP for user: ${record.user_id}`);
+                
+                // 1. Discord Invite XP
+                const discordXP = discordInvite.xp_awarded || 0;
+                totalXP += discordXP;
+                console.log(`📱 Discord Invite XP: ${discordXP}`);
+                
+                // 2. Buyer Details XP
                 try {
-                    console.log(`📡 Fetching comprehensive XP data for user: ${record.user_id}`);
-                    const xpResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    if (record.buyer_details) {
+                        const buyerDetails = JSON.parse(record.buyer_details);
+                        if (buyerDetails && Array.isArray(buyerDetails)) {
+                            const buyerXP = buyerDetails.reduce((sum, detail) => {
+                                return sum + (detail.xp_awarded || 0);
+                            }, 0);
+                            totalXP += buyerXP;
+                            console.log(`🛒 Buyer Details XP: ${buyerXP}`);
                         }
-                    });
-
-                    if (xpResponse.ok) {
-                        const xpData = await xpResponse.json();
-                        console.log(`📊 XP Data API Response:`, xpData);
-                        
-                        // Look for user's XP data
-                        if (xpData && Array.isArray(xpData)) {
-                            const userXPRecord = xpData.find(xpRecord => 
-                                xpRecord.user_id === record.user_id || 
-                                xpRecord.email === record.email
-                            );
-                            
-                            if (userXPRecord && userXPRecord.total_xp) {
-                                totalXP = userXPRecord.total_xp;
-                                console.log(`✅ Found comprehensive XP data: ${totalXP}`);
-                            } else {
-                                console.log(`⚠️ No comprehensive XP data found, using Discord invite XP: ${totalXP}`);
-                            }
-                        }
-                    } else {
-                        console.log(`⚠️ XP Data API not available (${xpResponse.status}), using Discord invite XP: ${totalXP}`);
                     }
-                } catch (xpError) {
-                    console.log(`⚠️ Error fetching comprehensive XP data: ${xpError.message}, using Discord invite XP: ${totalXP}`);
+                } catch (error) {
+                    console.log(`⚠️ Error parsing buyer_details: ${error.message}`);
                 }
+                
+                // 3. Talent Show Entry XP
+                try {
+                    if (record.talentshow_entry) {
+                        const talentShowData = JSON.parse(record.talentshow_entry);
+                        const talentXP = talentShowData.xp_awarded || 0;
+                        totalXP += talentXP;
+                        console.log(`🎭 Talent Show Entry XP: ${talentXP}`);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Error parsing talentshow_entry: ${error.message}`);
+                }
+                
+                // 4. Seller Details XP
+                try {
+                    if (record.seller_details) {
+                        const sellerDetails = JSON.parse(record.seller_details);
+                        if (sellerDetails && Array.isArray(sellerDetails)) {
+                            const sellerXP = sellerDetails.reduce((sum, detail) => {
+                                return sum + (detail.xp_awarded || 0);
+                            }, 0);
+                            totalXP += sellerXP;
+                            console.log(`💰 Seller Details XP: ${sellerXP}`);
+                        }
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Error parsing seller_details: ${error.message}`);
+                }
+                
+                // 5. Discord Poll XP
+                try {
+                    if (record.discord_poll) {
+                        const pollData = JSON.parse(record.discord_poll);
+                        const pollXP = pollData.xp_awarded || 0;
+                        totalXP += pollXP;
+                        console.log(`🗳️ Discord Poll XP: ${pollXP}`);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Error parsing discord_poll: ${error.message}`);
+                }
+                
+                console.log(`🎯 Total XP Calculated: ${totalXP}`);
 
                 return {
                     success: true,
