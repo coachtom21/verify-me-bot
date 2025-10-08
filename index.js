@@ -1354,10 +1354,10 @@ async function getUserProfileData(discordUsername) {
     try {
         console.log(`🔍 Fetching profile data for user: ${discordUsername}`);
         
-        // Call the discord invites API (which is working)
+        // Call the user-xp-data API (which has the correct structure)
         console.log(`🔑 Using hardcoded API key`);
         
-        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-invites', {
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
@@ -1381,36 +1381,38 @@ async function getUserProfileData(discordUsername) {
         const apiData = await response.json();
         console.log(`📊 API Response for ${discordUsername}:`, apiData);
 
-        if (apiData && Array.isArray(apiData)) {
-            // Search through records to find matching Discord username
+        if (apiData && apiData.users && Array.isArray(apiData.users)) {
+            // Search through users to find matching Discord username
             let foundUser = null;
             
-            for (const record of apiData) {
+            for (const user of apiData.users) {
                 try {
-                    const discordInvite = JSON.parse(record.discord_invite);
-                    if (discordInvite.discord_username && 
-                        discordInvite.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
-                        foundUser = { record, discordInvite };
-                        console.log(`✅ Found user by Discord username: ${discordInvite.discord_username}`);
-                        break;
+                    const metaData = user.meta_data;
+                    if (metaData && metaData._discord_invite) {
+                        const discordInvite = metaData._discord_invite;
+                        if (discordInvite.discord_username && 
+                            discordInvite.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
+                            foundUser = { user, metaData, discordInvite };
+                            console.log(`✅ Found user by Discord username: ${discordInvite.discord_username}`);
+                            break;
+                        }
                     }
                 } catch (parseError) {
-                    console.error('Error parsing discord_invite JSON:', parseError);
+                    console.error('Error parsing user data:', parseError);
                     continue;
                 }
             }
             
             if (foundUser) {
-                const { record, discordInvite } = foundUser;
+                const { user, metaData, discordInvite } = foundUser;
                 
                 // Try to get membership from buyer details if available
                 let membershipName = 'verified';
                 try {
-                    // Check if there's buyer details with membership info
-                    if (record.buyer_details) {
-                        const buyerDetails = JSON.parse(record.buyer_details);
-                        if (buyerDetails && buyerDetails.length > 0 && buyerDetails[0].membership) {
-                            membershipName = buyerDetails[0].membership;
+                    if (metaData._buyer_details && Array.isArray(metaData._buyer_details) && metaData._buyer_details.length > 0) {
+                        const buyerDetail = metaData._buyer_details[0];
+                        if (buyerDetail.membership) {
+                            membershipName = buyerDetail.membership;
                         }
                     }
                 } catch (error) {
@@ -1427,116 +1429,71 @@ async function getUserProfileData(discordUsername) {
                     discordPoll: 0
                 };
                 
-                console.log(`🧮 Calculating total XP for user: ${record.user_id}`);
-                console.log(`📋 Raw record data:`, JSON.stringify(record, null, 2));
+                console.log(`🧮 Calculating total XP for user: ${user.user_id}`);
+                console.log(`📋 Raw meta data:`, JSON.stringify(metaData, null, 2));
                 
                 // 1. Discord Invite XP
-                const discordXP = discordInvite.xp_awarded || 0;
-                totalXP += discordXP;
-                xpBreakdown.discordInvite = discordXP;
-                console.log(`📱 Discord Invite XP: ${discordXP}`);
-                console.log(`📱 Discord Invite Raw Data:`, JSON.stringify(discordInvite, null, 2));
+                if (metaData._discord_invite && metaData._discord_invite.xp_awarded) {
+                    const discordXP = metaData._discord_invite.xp_awarded;
+                    totalXP += discordXP;
+                    xpBreakdown.discordInvite = discordXP;
+                    console.log(`📱 Discord Invite XP: ${discordXP}`);
+                }
                 
                 // 2. Buyer Details XP
-                try {
-                    if (record.buyer_details) {
-                        console.log(`🛒 Buyer Details Raw:`, record.buyer_details);
-                        const buyerDetails = JSON.parse(record.buyer_details);
-                        console.log(`🛒 Buyer Details Parsed:`, JSON.stringify(buyerDetails, null, 2));
-                        if (buyerDetails && Array.isArray(buyerDetails)) {
-                            const buyerXP = buyerDetails.reduce((sum, detail) => {
-                                const xp = detail.xp_awarded || 0;
-                                console.log(`🛒 Buyer Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
-                                return sum + xp;
-                            }, 0);
-                            totalXP += buyerXP;
-                            xpBreakdown.buyerDetails = buyerXP;
-                            console.log(`🛒 Total Buyer Details XP: ${buyerXP}`);
-                        } else if (buyerDetails && typeof buyerDetails === 'object') {
-                            const buyerXP = buyerDetails.xp_awarded || 0;
-                            totalXP += buyerXP;
-                            xpBreakdown.buyerDetails = buyerXP;
-                            console.log(`🛒 Single Buyer Detail XP: ${buyerXP}`);
-                        }
-                    } else {
-                        console.log(`🛒 No buyer_details found`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Error parsing buyer_details: ${error.message}`);
+                if (metaData._buyer_details && Array.isArray(metaData._buyer_details)) {
+                    const buyerXP = metaData._buyer_details.reduce((sum, detail) => {
+                        const xp = detail.xp_awarded || 0;
+                        console.log(`🛒 Buyer Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
+                        return sum + xp;
+                    }, 0);
+                    totalXP += buyerXP;
+                    xpBreakdown.buyerDetails = buyerXP;
+                    console.log(`🛒 Total Buyer Details XP: ${buyerXP}`);
                 }
                 
                 // 3. Talent Show Entry XP
-                try {
-                    if (record.talentshow_entry) {
-                        console.log(`🎭 Talent Show Entry Raw:`, record.talentshow_entry);
-                        const talentShowData = JSON.parse(record.talentshow_entry);
-                        console.log(`🎭 Talent Show Entry Parsed:`, JSON.stringify(talentShowData, null, 2));
-                        const talentXP = talentShowData.xp_awarded || 0;
-                        totalXP += talentXP;
-                        xpBreakdown.talentShow = talentXP;
-                        console.log(`🎭 Talent Show Entry XP: ${talentXP}`);
-                    } else {
-                        console.log(`🎭 No talentshow_entry found`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Error parsing talentshow_entry: ${error.message}`);
+                if (metaData._talentshow_entry && metaData._talentshow_entry.xp_awarded) {
+                    const talentXP = metaData._talentshow_entry.xp_awarded;
+                    totalXP += talentXP;
+                    xpBreakdown.talentShow = talentXP;
+                    console.log(`🎭 Talent Show Entry XP: ${talentXP}`);
                 }
                 
                 // 4. Seller Details XP
-                try {
-                    if (record.seller_details) {
-                        console.log(`💰 Seller Details Raw:`, record.seller_details);
-                        const sellerDetails = JSON.parse(record.seller_details);
-                        console.log(`💰 Seller Details Parsed:`, JSON.stringify(sellerDetails, null, 2));
-                        if (sellerDetails && Array.isArray(sellerDetails)) {
-                            const sellerXP = sellerDetails.reduce((sum, detail) => {
-                                const xp = detail.xp_awarded || 0;
-                                console.log(`💰 Seller Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
-                                return sum + xp;
-                            }, 0);
-                            totalXP += sellerXP;
-                            xpBreakdown.sellerDetails = sellerXP;
-                            console.log(`💰 Total Seller Details XP: ${sellerXP}`);
-                        } else if (sellerDetails && typeof sellerDetails === 'object') {
-                            const sellerXP = sellerDetails.xp_awarded || 0;
-                            totalXP += sellerXP;
-                            xpBreakdown.sellerDetails = sellerXP;
-                            console.log(`💰 Single Seller Detail XP: ${sellerXP}`);
-                        }
-                    } else {
-                        console.log(`💰 No seller_details found`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Error parsing seller_details: ${error.message}`);
+                if (metaData._seller_details && Array.isArray(metaData._seller_details)) {
+                    const sellerXP = metaData._seller_details.reduce((sum, detail) => {
+                        const xp = detail.xp_awarded || 0;
+                        console.log(`💰 Seller Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
+                        return sum + xp;
+                    }, 0);
+                    totalXP += sellerXP;
+                    xpBreakdown.sellerDetails = sellerXP;
+                    console.log(`💰 Total Seller Details XP: ${sellerXP}`);
                 }
                 
                 // 5. Discord Poll XP
-                try {
-                    if (record.discord_poll) {
-                        console.log(`🗳️ Discord Poll Raw:`, record.discord_poll);
-                        const pollData = JSON.parse(record.discord_poll);
-                        console.log(`🗳️ Discord Poll Parsed:`, JSON.stringify(pollData, null, 2));
-                        const pollXP = pollData.xp_awarded || 0;
-                        totalXP += pollXP;
-                        xpBreakdown.discordPoll = pollXP;
-                        console.log(`🗳️ Discord Poll XP: ${pollXP}`);
-                    } else {
-                        console.log(`🗳️ No discord_poll found`);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Error parsing discord_poll: ${error.message}`);
+                if (metaData._discord_poll && Array.isArray(metaData._discord_poll)) {
+                    const pollXP = metaData._discord_poll.reduce((sum, poll) => {
+                        const xp = poll.xp_awarded || 0;
+                        console.log(`🗳️ Poll XP: ${xp} from:`, JSON.stringify(poll, null, 2));
+                        return sum + xp;
+                    }, 0);
+                    totalXP += pollXP;
+                    xpBreakdown.discordPoll = pollXP;
+                    console.log(`🗳️ Total Discord Poll XP: ${pollXP}`);
                 }
                 
                 console.log(`🎯 FINAL Total XP Calculated: ${totalXP}`);
-                console.log(`🎯 XP Breakdown: Discord(${discordXP}) + Buyer + Talent + Seller + Poll = ${totalXP}`);
+                console.log(`🎯 XP Breakdown: Discord(${xpBreakdown.discordInvite}) + Buyer(${xpBreakdown.buyerDetails}) + Talent(${xpBreakdown.talentShow}) + Seller(${xpBreakdown.sellerDetails}) + Poll(${xpBreakdown.discordPoll}) = ${totalXP}`);
 
                 return {
                     success: true,
                     data: {
-                        userId: record.user_id,
+                        userId: user.user_id,
                         discordUsername: discordInvite.discord_username,
-                        fullName: discordInvite.discord_display_name || record.email,
-                        email: record.email,
+                        fullName: discordInvite.discord_display_name || user.display_name,
+                        email: user.user_email,
                         membership: membershipName,
                         totalXP: totalXP,
                         xpBreakdown: xpBreakdown,
@@ -1557,6 +1514,13 @@ async function getUserProfileData(discordUsername) {
                         email: null,
                         membership: 'unverified',
                         totalXP: 0,
+                        xpBreakdown: {
+                            discordInvite: 0,
+                            buyerDetails: 0,
+                            talentShow: 0,
+                            sellerDetails: 0,
+                            discordPoll: 0
+                        },
                         discordId: null,
                         joinDate: null,
                         verificationDate: null
@@ -1575,6 +1539,13 @@ async function getUserProfileData(discordUsername) {
                     email: null,
                     membership: 'unverified',
                     totalXP: 0,
+                    xpBreakdown: {
+                        discordInvite: 0,
+                        buyerDetails: 0,
+                        talentShow: 0,
+                        sellerDetails: 0,
+                        discordPoll: 0
+                    },
                     discordId: null,
                     joinDate: null,
                     verificationDate: null
