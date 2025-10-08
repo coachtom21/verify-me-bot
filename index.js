@@ -1377,25 +1377,74 @@ async function getUserProfileData(discordUsername) {
         const apiData = await response.json();
         console.log(`📊 API Response for ${discordUsername}:`, apiData);
 
-        if (apiData && apiData.success && apiData.data) {
-            const userData = apiData.data;
+        if (apiData && apiData.users && Array.isArray(apiData.users)) {
+            // Search through users to find matching Discord username
+            let foundUser = null;
             
-            return {
-                success: true,
-                data: {
-                    userId: userData.user_id || userData.id,
-                    discordUsername: discordUsername,
-                    fullName: userData.full_name || userData.display_name || discordUsername
+            for (const user of apiData.users) {
+                // Check discord_invite data
+                if (user.meta_data && user.meta_data._discord_invite) {
+                    const discordData = user.meta_data._discord_invite;
+                    if (discordData.discord_username && 
+                        discordData.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
+                        foundUser = user;
+                        console.log(`✅ Found user by Discord username: ${discordData.discord_username}`);
+                        break;
+                    }
                 }
-            };
+            }
+            
+            if (foundUser) {
+                const discordData = foundUser.meta_data._discord_invite;
+                const buyerData = foundUser.meta_data._buyer_details && foundUser.meta_data._buyer_details[0];
+                
+                return {
+                    success: true,
+                    data: {
+                        userId: foundUser.user_id,
+                        discordUsername: discordData.discord_username,
+                        fullName: discordData.discord_display_name || foundUser.display_name,
+                        email: foundUser.user_email,
+                        membership: buyerData ? buyerData.membership : 'unverified',
+                        totalXP: (discordData.xp_awarded || 0) + (buyerData ? (buyerData.xp_awarded || 0) : 0),
+                        discordId: discordData.discord_id,
+                        joinDate: discordData.joined_at,
+                        verificationDate: discordData.verification_date
+                    }
+                };
+            } else {
+                console.log(`❌ User ${discordUsername} not found in API data`);
+                // Return default profile for unverified users
+                return {
+                    success: true,
+                    data: {
+                        userId: null,
+                        discordUsername: discordUsername,
+                        fullName: discordUsername,
+                        email: null,
+                        membership: 'unverified',
+                        totalXP: 0,
+                        discordId: null,
+                        joinDate: null,
+                        verificationDate: null
+                    }
+                };
+            }
         } else {
-            // Return default profile for unverified users
+            console.log(`❌ Invalid API response format`);
+            // Return default profile for API errors
             return {
                 success: true,
                 data: {
                     userId: null,
                     discordUsername: discordUsername,
-                    fullName: discordUsername
+                    fullName: discordUsername,
+                    email: null,
+                    membership: 'unverified',
+                    totalXP: 0,
+                    discordId: null,
+                    joinDate: null,
+                    verificationDate: null
                 }
             };
         }
@@ -3156,56 +3205,129 @@ client.on('messageCreate', async (message) => {
             // Remove @ symbol if present
             if (targetUsername.startsWith('@')) {
                 targetUsername = targetUsername.substring(1);
+                console.log(`🔍 After removing @: "${targetUsername}"`);
             }
 
-            // Remove <@!> mentions if present
+            // Handle Discord mentions - extract actual Discord user data
+            let discordUser = null;
+            let actualUsername = targetUsername;
+            
             if (targetUsername.startsWith('<@!') && targetUsername.endsWith('>')) {
                 const userId = targetUsername.slice(3, -1);
-                const user = client.users.cache.get(userId);
-                if (user) {
-                    targetUsername = user.username;
+                console.log(`🔍 Extracted user ID: "${userId}"`);
+                discordUser = client.users.cache.get(userId);
+                if (discordUser) {
+                    actualUsername = discordUser.username;
+                    console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
                 } else {
-                    await message.reply('❌ **User not found.** Please use a valid username.');
+                    await message.reply('❌ **User not found.** Please use a valid Discord mention.');
                     return;
                 }
-            }
-
-            // Handle <@> mentions (without !)
-            if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
+            } else if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
                 const userId = targetUsername.slice(2, -1);
-                const user = client.users.cache.get(userId);
-                if (user) {
-                    targetUsername = user.username;
+                console.log(`🔍 Extracted user ID: "${userId}"`);
+                discordUser = client.users.cache.get(userId);
+                if (discordUser) {
+                    actualUsername = discordUser.username;
+                    console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
                 } else {
-                    await message.reply('❌ **User not found.** Please use a valid username.');
+                    await message.reply('❌ **User not found.** Please use a valid Discord mention.');
                     return;
                 }
             }
 
-            console.log(`🔍 Final username to search: "${targetUsername}"`);
+            console.log(`🔍 Final username to search: "${actualUsername}"`);
+            
+            // Check if username is empty or just spaces
+            if (!actualUsername || actualUsername.trim() === '') {
+                await message.reply('❌ **Invalid username.** Please provide a valid username.');
+                return;
+            }
             await message.reply('🔍 **Fetching profile data...**');
 
-            // For now, just show the username without API call
+            // Try to get user profile data from API
+            console.log(`📡 Calling getUserProfileData for: "${actualUsername}"`);
+            const profileResult = await getUserProfileData(actualUsername);
+            console.log(`📊 Profile result:`, profileResult);
+            
+            if (!profileResult.success) {
+                await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`);
+                return;
+            }
+
+            const profile = profileResult.data;
+            
+            // Create profile embed with API data
             const profileEmbed = {
-                title: `👤 Profile: ${targetUsername}`,
-                color: 0x00ff00,
+                title: `👤 Profile: ${profile.fullName}`,
+                color: profile.membership !== 'unverified' ? 0x00ff00 : 0xffa500,
+                thumbnail: discordUser ? {
+                    url: discordUser.displayAvatarURL()
+                } : undefined,
                 fields: [
                     {
                         name: '🎯 Discord Username',
-                        value: targetUsername,
+                        value: profile.discordUsername,
                         inline: true
                     },
                     {
                         name: '📝 Full Name',
-                        value: targetUsername, // Using username as full name for now
+                        value: profile.fullName,
+                        inline: true
+                    },
+                    {
+                        name: '🆔 User ID',
+                        value: profile.userId || 'N/A',
+                        inline: true
+                    },
+                    {
+                        name: '📧 Email',
+                        value: profile.email || 'Not available',
+                        inline: true
+                    },
+                    {
+                        name: '🏆 Membership',
+                        value: profile.membership || 'Unverified',
+                        inline: true
+                    },
+                    {
+                        name: '💰 Total XP',
+                        value: formatEDecimal(profile.totalXP) || '0',
                         inline: true
                     }
                 ],
                 footer: {
-                    text: `SmallStreet Profile • No API Call`
+                    text: `SmallStreet Profile • Discord ID: ${profile.discordId || 'N/A'}`
                 },
                 timestamp: new Date().toISOString()
             };
+
+            // Add Discord user info if available
+            if (discordUser) {
+                profileEmbed.fields.push({
+                    name: '🔗 Discord Info',
+                    value: `**Username:** ${discordUser.username}\n**Display Name:** ${discordUser.displayName}\n**ID:** ${discordUser.id}`,
+                    inline: false
+                });
+            }
+
+            // Add join date if available
+            if (profile.joinDate) {
+                profileEmbed.fields.push({
+                    name: '📅 Joined Discord',
+                    value: new Date(profile.joinDate).toLocaleDateString(),
+                    inline: true
+                });
+            }
+
+            // Add verification date if available
+            if (profile.verificationDate) {
+                profileEmbed.fields.push({
+                    name: '✅ Verified',
+                    value: new Date(profile.verificationDate).toLocaleDateString(),
+                    inline: true
+                });
+            }
 
             await message.reply({ embeds: [profileEmbed] });
 
