@@ -1446,8 +1446,10 @@ async function getUserProfileData(discordUsername) {
                 }
                 
                 // 3. Talent Show Entry XP
-                if (metaData._talentshow_entry && metaData._talentshow_entry.xp_awarded) {
-                    const talentXP = metaData._talentshow_entry.xp_awarded;
+                if (metaData._talentshow_entry && Array.isArray(metaData._talentshow_entry)) {
+                    const talentXP = metaData._talentshow_entry.reduce((sum, entry) => {
+                        return sum + (entry.xp_awarded || 0);
+                    }, 0);
                     totalXP += talentXP;
                     xpBreakdown.talentShow = talentXP;
                 }
