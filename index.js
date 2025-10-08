@@ -3303,9 +3303,30 @@ client.on('messageCreate', async (message) => {
 
             // Add Discord user info if available
             if (discordUser) {
+                // Get Discord roles for the user
+                let discordRoles = 'No roles';
+                try {
+                    const guild = message.guild;
+                    const member = guild.members.cache.get(discordUser.id);
+                    if (member) {
+                        const roles = member.roles.cache
+                            .filter(role => role.name !== '@everyone')
+                            .map(role => role.name);
+                        discordRoles = roles.length > 0 ? roles.join(', ') : 'No roles';
+                    }
+                } catch (error) {
+                    console.log('Could not fetch Discord roles:', error.message);
+                }
+
                 profileEmbed.fields.push({
                     name: '🔗 Discord Info',
                     value: `**Username:** ${discordUser.username}\n**Display Name:** ${discordUser.displayName}\n**ID:** ${discordUser.id}`,
+                    inline: false
+                });
+
+                profileEmbed.fields.push({
+                    name: '🎭 Discord Roles',
+                    value: discordRoles,
                     inline: false
                 });
             }
@@ -3327,6 +3348,13 @@ client.on('messageCreate', async (message) => {
                     inline: true
                 });
             }
+
+            // Add Total XP as a prominent field
+            profileEmbed.fields.push({
+                name: '💰 Total XP',
+                value: `**${formatEDecimal(profile.totalXP)}**`,
+                inline: false
+            });
 
             await message.reply({ embeds: [profileEmbed] });
 
