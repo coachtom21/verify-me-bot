@@ -3961,15 +3961,15 @@ client.on('messageCreate', async (message) => {
                 console.log('Could not send user QR verification DM:', userDmError.message);
             }
 
-            // Send debug notification if enabled
+            // Send notification to admin
             if (true) {
                 try {
                     const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
                     if (adminUser) {
                         if (dbResult.success) {
-                            await adminUser.send(`✅ **QR Verification - Database Success**\n**User:** ${message.author.tag} (${message.author.id})\n**Result:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                            await adminUser.send(`✅ **QR Verification - Database Success**\n**User:** ${message.author.tag} (${message.author.id})`);
                         } else {
-                            await adminUser.send(`❌ **QR Verification - Database Failed**\n**User:** ${message.author.tag} (${message.author.id})\n**Error:** \`\`\`json\n${JSON.stringify(dbResult, null, 2)}\n\`\`\``);
+                            await adminUser.send(`❌ **QR Verification - Database Failed**\n**User:** ${message.author.tag} (${message.author.id})\n**Error:** ${dbResult.error || 'Unknown error'}`);
                         }
                     }
                 } catch (adminDmError) {
