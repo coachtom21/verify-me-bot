@@ -1419,24 +1419,47 @@ async function getUserProfileData(discordUsername) {
                 
                 // Calculate total XP by summing from all meta keys
                 let totalXP = 0;
+                let xpBreakdown = {
+                    discordInvite: 0,
+                    buyerDetails: 0,
+                    talentShow: 0,
+                    sellerDetails: 0,
+                    discordPoll: 0
+                };
+                
                 console.log(`🧮 Calculating total XP for user: ${record.user_id}`);
+                console.log(`📋 Raw record data:`, JSON.stringify(record, null, 2));
                 
                 // 1. Discord Invite XP
                 const discordXP = discordInvite.xp_awarded || 0;
                 totalXP += discordXP;
+                xpBreakdown.discordInvite = discordXP;
                 console.log(`📱 Discord Invite XP: ${discordXP}`);
+                console.log(`📱 Discord Invite Raw Data:`, JSON.stringify(discordInvite, null, 2));
                 
                 // 2. Buyer Details XP
                 try {
                     if (record.buyer_details) {
+                        console.log(`🛒 Buyer Details Raw:`, record.buyer_details);
                         const buyerDetails = JSON.parse(record.buyer_details);
+                        console.log(`🛒 Buyer Details Parsed:`, JSON.stringify(buyerDetails, null, 2));
                         if (buyerDetails && Array.isArray(buyerDetails)) {
                             const buyerXP = buyerDetails.reduce((sum, detail) => {
-                                return sum + (detail.xp_awarded || 0);
+                                const xp = detail.xp_awarded || 0;
+                                console.log(`🛒 Buyer Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
+                                return sum + xp;
                             }, 0);
                             totalXP += buyerXP;
-                            console.log(`🛒 Buyer Details XP: ${buyerXP}`);
+                            xpBreakdown.buyerDetails = buyerXP;
+                            console.log(`🛒 Total Buyer Details XP: ${buyerXP}`);
+                        } else if (buyerDetails && typeof buyerDetails === 'object') {
+                            const buyerXP = buyerDetails.xp_awarded || 0;
+                            totalXP += buyerXP;
+                            xpBreakdown.buyerDetails = buyerXP;
+                            console.log(`🛒 Single Buyer Detail XP: ${buyerXP}`);
                         }
+                    } else {
+                        console.log(`🛒 No buyer_details found`);
                     }
                 } catch (error) {
                     console.log(`⚠️ Error parsing buyer_details: ${error.message}`);
@@ -1445,10 +1468,15 @@ async function getUserProfileData(discordUsername) {
                 // 3. Talent Show Entry XP
                 try {
                     if (record.talentshow_entry) {
+                        console.log(`🎭 Talent Show Entry Raw:`, record.talentshow_entry);
                         const talentShowData = JSON.parse(record.talentshow_entry);
+                        console.log(`🎭 Talent Show Entry Parsed:`, JSON.stringify(talentShowData, null, 2));
                         const talentXP = talentShowData.xp_awarded || 0;
                         totalXP += talentXP;
+                        xpBreakdown.talentShow = talentXP;
                         console.log(`🎭 Talent Show Entry XP: ${talentXP}`);
+                    } else {
+                        console.log(`🎭 No talentshow_entry found`);
                     }
                 } catch (error) {
                     console.log(`⚠️ Error parsing talentshow_entry: ${error.message}`);
@@ -1457,14 +1485,26 @@ async function getUserProfileData(discordUsername) {
                 // 4. Seller Details XP
                 try {
                     if (record.seller_details) {
+                        console.log(`💰 Seller Details Raw:`, record.seller_details);
                         const sellerDetails = JSON.parse(record.seller_details);
+                        console.log(`💰 Seller Details Parsed:`, JSON.stringify(sellerDetails, null, 2));
                         if (sellerDetails && Array.isArray(sellerDetails)) {
                             const sellerXP = sellerDetails.reduce((sum, detail) => {
-                                return sum + (detail.xp_awarded || 0);
+                                const xp = detail.xp_awarded || 0;
+                                console.log(`💰 Seller Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
+                                return sum + xp;
                             }, 0);
                             totalXP += sellerXP;
-                            console.log(`💰 Seller Details XP: ${sellerXP}`);
+                            xpBreakdown.sellerDetails = sellerXP;
+                            console.log(`💰 Total Seller Details XP: ${sellerXP}`);
+                        } else if (sellerDetails && typeof sellerDetails === 'object') {
+                            const sellerXP = sellerDetails.xp_awarded || 0;
+                            totalXP += sellerXP;
+                            xpBreakdown.sellerDetails = sellerXP;
+                            console.log(`💰 Single Seller Detail XP: ${sellerXP}`);
                         }
+                    } else {
+                        console.log(`💰 No seller_details found`);
                     }
                 } catch (error) {
                     console.log(`⚠️ Error parsing seller_details: ${error.message}`);
@@ -1473,16 +1513,22 @@ async function getUserProfileData(discordUsername) {
                 // 5. Discord Poll XP
                 try {
                     if (record.discord_poll) {
+                        console.log(`🗳️ Discord Poll Raw:`, record.discord_poll);
                         const pollData = JSON.parse(record.discord_poll);
+                        console.log(`🗳️ Discord Poll Parsed:`, JSON.stringify(pollData, null, 2));
                         const pollXP = pollData.xp_awarded || 0;
                         totalXP += pollXP;
+                        xpBreakdown.discordPoll = pollXP;
                         console.log(`🗳️ Discord Poll XP: ${pollXP}`);
+                    } else {
+                        console.log(`🗳️ No discord_poll found`);
                     }
                 } catch (error) {
                     console.log(`⚠️ Error parsing discord_poll: ${error.message}`);
                 }
                 
-                console.log(`🎯 Total XP Calculated: ${totalXP}`);
+                console.log(`🎯 FINAL Total XP Calculated: ${totalXP}`);
+                console.log(`🎯 XP Breakdown: Discord(${discordXP}) + Buyer + Talent + Seller + Poll = ${totalXP}`);
 
                 return {
                     success: true,
@@ -1493,6 +1539,7 @@ async function getUserProfileData(discordUsername) {
                         email: record.email,
                         membership: membershipName,
                         totalXP: totalXP,
+                        xpBreakdown: xpBreakdown,
                         discordId: discordInvite.discord_id,
                         joinDate: discordInvite.joined_at,
                         verificationDate: discordInvite.verification_date
@@ -3403,10 +3450,26 @@ client.on('messageCreate', async (message) => {
             // Update the Discord Roles field
             profileEmbed.fields[4].value = discordRoles;
 
-            // Add Total XP
+            // Add Total XP with breakdown
+            let xpBreakdownText = `**Total: ${formatXPNumber(profile.totalXP) || '0'}**\n\n`;
+            
+            if (profile.xpBreakdown) {
+                xpBreakdownText += `📱 **Discord Invite:** ${formatXPNumber(profile.xpBreakdown.discordInvite)}\n`;
+                xpBreakdownText += `🛒 **Buyer Details:** ${formatXPNumber(profile.xpBreakdown.buyerDetails)}\n`;
+                xpBreakdownText += `🎭 **Talent Show:** ${formatXPNumber(profile.xpBreakdown.talentShow)}\n`;
+                xpBreakdownText += `💰 **Seller Details:** ${formatXPNumber(profile.xpBreakdown.sellerDetails)}\n`;
+                xpBreakdownText += `🗳️ **Discord Poll:** ${formatXPNumber(profile.xpBreakdown.discordPoll)}\n`;
+            } else {
+                xpBreakdownText += `📱 **Discord Invite:** ${formatXPNumber(profile.totalXP) || '0'}\n`;
+                xpBreakdownText += `🛒 **Buyer Details:** 0\n`;
+                xpBreakdownText += `🎭 **Talent Show:** 0\n`;
+                xpBreakdownText += `💰 **Seller Details:** 0\n`;
+                xpBreakdownText += `🗳️ **Discord Poll:** 0\n`;
+            }
+            
             profileEmbed.fields.push({
-                name: '💰 Total XP',
-                value: formatXPNumber(profile.totalXP) || '0',
+                name: '💰 XP Breakdown',
+                value: xpBreakdownText,
                 inline: false
             });
 
