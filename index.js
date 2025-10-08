@@ -3214,7 +3214,7 @@ client.on('messageCreate', async (message) => {
             // Extract username from the command
             const args = message.content.split(' ');
             if (args.length < 2) {
-                await message.author.send('❌ **Usage:** `!profile @username` or `!profile username`');
+                await message.reply('❌ **Usage:** `!profile @username` or `!profile username`');
                 return;
             }
 
@@ -3270,7 +3270,7 @@ client.on('messageCreate', async (message) => {
             console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
-                await message.author.send(`❌ **Error fetching profile:** ${profileResult.error}`);
+                await message.reply(`❌ **Error fetching profile:** ${profileResult.error}`);
                 return;
             }
 
@@ -3361,11 +3361,11 @@ client.on('messageCreate', async (message) => {
                 });
             }
 
-            await message.author.send({ embeds: [profileEmbed] });
+            await message.reply({ embeds: [profileEmbed] });
 
         } catch (error) {
             console.error('Profile command error:', error);
-            await message.author.send(`❌ **Error displaying profile:** ${error.message}`);
+            await message.reply(`❌ **Error displaying profile:** ${error.message}`);
         }
         return;
     }
