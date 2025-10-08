@@ -1403,6 +1403,20 @@ async function getUserProfileData(discordUsername) {
             if (foundUser) {
                 const { record, discordInvite } = foundUser;
                 
+                // Try to get membership from buyer details if available
+                let membershipName = 'verified';
+                try {
+                    // Check if there's buyer details with membership info
+                    if (record.buyer_details) {
+                        const buyerDetails = JSON.parse(record.buyer_details);
+                        if (buyerDetails && buyerDetails.length > 0 && buyerDetails[0].membership) {
+                            membershipName = buyerDetails[0].membership;
+                        }
+                    }
+                } catch (error) {
+                    console.log('Could not parse buyer details:', error.message);
+                }
+                
                 return {
                     success: true,
                     data: {
@@ -1410,7 +1424,7 @@ async function getUserProfileData(discordUsername) {
                         discordUsername: discordInvite.discord_username,
                         fullName: discordInvite.discord_display_name || record.email,
                         email: record.email,
-                        membership: 'verified', // All users in discord-invites are verified
+                        membership: membershipName,
                         totalXP: discordInvite.xp_awarded || 0,
                         discordId: discordInvite.discord_id,
                         joinDate: discordInvite.joined_at,
@@ -3281,11 +3295,6 @@ client.on('messageCreate', async (message) => {
                         inline: true
                     },
                     {
-                        name: '🆔 User ID',
-                        value: profile.userId || 'N/A',
-                        inline: true
-                    },
-                    {
                         name: '📧 Email',
                         value: profile.email || 'Not available',
                         inline: true
@@ -3296,8 +3305,8 @@ client.on('messageCreate', async (message) => {
                         inline: true
                     },
                     {
-                        name: '💰 Total XP',
-                        value: formatXPNumber(profile.totalXP) || '0',
+                        name: '🎭 Discord Roles',
+                        value: 'Loading...', // Will be updated below
                         inline: true
                     }
                 ],
@@ -3307,10 +3316,9 @@ client.on('messageCreate', async (message) => {
                 timestamp: new Date().toISOString()
             };
 
-            // Add Discord user info if available
+            // Get Discord roles and update the field
+            let discordRoles = 'No roles';
             if (discordUser) {
-                // Get Discord roles for the user
-                let discordRoles = 'No roles';
                 try {
                     const guild = message.guild;
                     const member = guild.members.cache.get(discordUser.id);
@@ -3323,19 +3331,17 @@ client.on('messageCreate', async (message) => {
                 } catch (error) {
                     console.log('Could not fetch Discord roles:', error.message);
                 }
-
-                profileEmbed.fields.push({
-                    name: '🔗 Discord Info',
-                    value: `**Username:** ${discordUser.username}\n**Display Name:** ${discordUser.displayName}\n**ID:** ${discordUser.id}`,
-                    inline: false
-                });
-
-                profileEmbed.fields.push({
-                    name: '🎭 Discord Roles',
-                    value: discordRoles,
-                    inline: false
-                });
             }
+            
+            // Update the Discord Roles field
+            profileEmbed.fields[4].value = discordRoles;
+
+            // Add Total XP
+            profileEmbed.fields.push({
+                name: '💰 Total XP',
+                value: formatXPNumber(profile.totalXP) || '0',
+                inline: false
+            });
 
             // Add join date if available
             if (profile.joinDate) {
@@ -3354,13 +3360,6 @@ client.on('messageCreate', async (message) => {
                     inline: true
                 });
             }
-
-            // Add Total XP as a prominent field
-            profileEmbed.fields.push({
-                name: '💰 Total XP',
-                value: `**${formatXPNumber(profile.totalXP)}**`,
-                inline: false
-            });
 
             await message.reply({ embeds: [profileEmbed] });
 
