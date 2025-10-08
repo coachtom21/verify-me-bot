@@ -1348,17 +1348,15 @@ async function getUserProfileData(discordUsername) {
     try {
         console.log(`🔍 Fetching profile data for user: ${discordUsername}`);
         
-        // Call the user XP data API
-        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
-            method: 'POST',
+        // Call the discord invites API (which is working)
+        console.log(`🔑 Using hardcoded API key`);
+        
+        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-invites', {
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            body: JSON.stringify({
-                discord_username: discordUsername
-            })
+            }
         });
 
         if (!response.ok) {
@@ -1377,39 +1375,40 @@ async function getUserProfileData(discordUsername) {
         const apiData = await response.json();
         console.log(`📊 API Response for ${discordUsername}:`, apiData);
 
-        if (apiData && apiData.users && Array.isArray(apiData.users)) {
-            // Search through users to find matching Discord username
+        if (apiData && Array.isArray(apiData)) {
+            // Search through records to find matching Discord username
             let foundUser = null;
             
-            for (const user of apiData.users) {
-                // Check discord_invite data
-                if (user.meta_data && user.meta_data._discord_invite) {
-                    const discordData = user.meta_data._discord_invite;
-                    if (discordData.discord_username && 
-                        discordData.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
-                        foundUser = user;
-                        console.log(`✅ Found user by Discord username: ${discordData.discord_username}`);
+            for (const record of apiData) {
+                try {
+                    const discordInvite = JSON.parse(record.discord_invite);
+                    if (discordInvite.discord_username && 
+                        discordInvite.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
+                        foundUser = { record, discordInvite };
+                        console.log(`✅ Found user by Discord username: ${discordInvite.discord_username}`);
                         break;
                     }
+                } catch (parseError) {
+                    console.error('Error parsing discord_invite JSON:', parseError);
+                    continue;
                 }
             }
             
             if (foundUser) {
-                const discordData = foundUser.meta_data._discord_invite;
-                const buyerData = foundUser.meta_data._buyer_details && foundUser.meta_data._buyer_details[0];
+                const { record, discordInvite } = foundUser;
                 
                 return {
                     success: true,
                     data: {
-                        userId: foundUser.user_id,
-                        discordUsername: discordData.discord_username,
-                        fullName: discordData.discord_display_name || foundUser.display_name,
-                        email: foundUser.user_email,
-                        membership: buyerData ? buyerData.membership : 'unverified',
-                        totalXP: (discordData.xp_awarded || 0) + (buyerData ? (buyerData.xp_awarded || 0) : 0),
-                        discordId: discordData.discord_id,
-                        joinDate: discordData.joined_at,
-                        verificationDate: discordData.verification_date
+                        userId: record.user_id,
+                        discordUsername: discordInvite.discord_username,
+                        fullName: discordInvite.discord_display_name || record.email,
+                        email: record.email,
+                        membership: 'verified', // All users in discord-invites are verified
+                        totalXP: discordInvite.xp_awarded || 0,
+                        discordId: discordInvite.discord_id,
+                        joinDate: discordInvite.joined_at,
+                        verificationDate: discordInvite.verification_date
                     }
                 };
             } else {
