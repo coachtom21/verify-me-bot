@@ -1088,6 +1088,12 @@ function formatEDecimal(xp) {
     return `e+${exp}`;
 }
 
+// Function to format XP as readable number
+function formatXPNumber(xp) {
+    if (xp === 0) return '0';
+    return xp.toLocaleString(); // Shows full number with commas
+}
+
 // Enhanced poll results processing with weighted voting
 async function getEnhancedPollResults(messageId) {
     try {
@@ -3291,7 +3297,7 @@ client.on('messageCreate', async (message) => {
                     },
                     {
                         name: '💰 Total XP',
-                        value: formatEDecimal(profile.totalXP) || '0',
+                        value: formatXPNumber(profile.totalXP) || '0',
                         inline: true
                     }
                 ],
@@ -3352,7 +3358,7 @@ client.on('messageCreate', async (message) => {
             // Add Total XP as a prominent field
             profileEmbed.fields.push({
                 name: '💰 Total XP',
-                value: `**${formatEDecimal(profile.totalXP)}**`,
+                value: `**${formatXPNumber(profile.totalXP)}**`,
                 inline: false
             });
 
