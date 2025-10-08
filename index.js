@@ -1429,27 +1429,20 @@ async function getUserProfileData(discordUsername) {
                     discordPoll: 0
                 };
                 
-                console.log(`🧮 Calculating total XP for user: ${user.user_id}`);
-                console.log(`📋 Raw meta data:`, JSON.stringify(metaData, null, 2));
-                
                 // 1. Discord Invite XP
                 if (metaData._discord_invite && metaData._discord_invite.xp_awarded) {
                     const discordXP = metaData._discord_invite.xp_awarded;
                     totalXP += discordXP;
                     xpBreakdown.discordInvite = discordXP;
-                    console.log(`📱 Discord Invite XP: ${discordXP}`);
                 }
                 
                 // 2. Buyer Details XP
                 if (metaData._buyer_details && Array.isArray(metaData._buyer_details)) {
                     const buyerXP = metaData._buyer_details.reduce((sum, detail) => {
-                        const xp = detail.xp_awarded || 0;
-                        console.log(`🛒 Buyer Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
-                        return sum + xp;
+                        return sum + (detail.xp_awarded || 0);
                     }, 0);
                     totalXP += buyerXP;
                     xpBreakdown.buyerDetails = buyerXP;
-                    console.log(`🛒 Total Buyer Details XP: ${buyerXP}`);
                 }
                 
                 // 3. Talent Show Entry XP
@@ -1457,35 +1450,25 @@ async function getUserProfileData(discordUsername) {
                     const talentXP = metaData._talentshow_entry.xp_awarded;
                     totalXP += talentXP;
                     xpBreakdown.talentShow = talentXP;
-                    console.log(`🎭 Talent Show Entry XP: ${talentXP}`);
                 }
                 
                 // 4. Seller Details XP
                 if (metaData._seller_details && Array.isArray(metaData._seller_details)) {
                     const sellerXP = metaData._seller_details.reduce((sum, detail) => {
-                        const xp = detail.xp_awarded || 0;
-                        console.log(`💰 Seller Detail XP: ${xp} from:`, JSON.stringify(detail, null, 2));
-                        return sum + xp;
+                        return sum + (detail.xp_awarded || 0);
                     }, 0);
                     totalXP += sellerXP;
                     xpBreakdown.sellerDetails = sellerXP;
-                    console.log(`💰 Total Seller Details XP: ${sellerXP}`);
                 }
                 
                 // 5. Discord Poll XP
                 if (metaData._discord_poll && Array.isArray(metaData._discord_poll)) {
                     const pollXP = metaData._discord_poll.reduce((sum, poll) => {
-                        const xp = poll.xp_awarded || 0;
-                        console.log(`🗳️ Poll XP: ${xp} from:`, JSON.stringify(poll, null, 2));
-                        return sum + xp;
+                        return sum + (poll.xp_awarded || 0);
                     }, 0);
                     totalXP += pollXP;
                     xpBreakdown.discordPoll = pollXP;
-                    console.log(`🗳️ Total Discord Poll XP: ${pollXP}`);
                 }
-                
-                console.log(`🎯 FINAL Total XP Calculated: ${totalXP}`);
-                console.log(`🎯 XP Breakdown: Discord(${xpBreakdown.discordInvite}) + Buyer(${xpBreakdown.buyerDetails}) + Talent(${xpBreakdown.talentShow}) + Seller(${xpBreakdown.sellerDetails}) + Poll(${xpBreakdown.discordPoll}) = ${totalXP}`);
 
                 return {
                     success: true,
@@ -3421,26 +3404,10 @@ client.on('messageCreate', async (message) => {
             // Update the Discord Roles field
             profileEmbed.fields[4].value = discordRoles;
 
-            // Add Total XP with breakdown
-            let xpBreakdownText = `**Total: ${formatXPNumber(profile.totalXP) || '0'}**\n\n`;
-            
-            if (profile.xpBreakdown) {
-                xpBreakdownText += `📱 **Discord Invite:** ${formatXPNumber(profile.xpBreakdown.discordInvite)}\n`;
-                xpBreakdownText += `🛒 **Buyer Details:** ${formatXPNumber(profile.xpBreakdown.buyerDetails)}\n`;
-                xpBreakdownText += `🎭 **Talent Show:** ${formatXPNumber(profile.xpBreakdown.talentShow)}\n`;
-                xpBreakdownText += `💰 **Seller Details:** ${formatXPNumber(profile.xpBreakdown.sellerDetails)}\n`;
-                xpBreakdownText += `🗳️ **Discord Poll:** ${formatXPNumber(profile.xpBreakdown.discordPoll)}\n`;
-            } else {
-                xpBreakdownText += `📱 **Discord Invite:** ${formatXPNumber(profile.totalXP) || '0'}\n`;
-                xpBreakdownText += `🛒 **Buyer Details:** 0\n`;
-                xpBreakdownText += `🎭 **Talent Show:** 0\n`;
-                xpBreakdownText += `💰 **Seller Details:** 0\n`;
-                xpBreakdownText += `🗳️ **Discord Poll:** 0\n`;
-            }
-            
+            // Add Total XP
             profileEmbed.fields.push({
-                name: '💰 XP Breakdown',
-                value: xpBreakdownText,
+                name: '💰 Total XP',
+                value: formatXPNumber(profile.totalXP) || '0',
                 inline: false
             });
 
