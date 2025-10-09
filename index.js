@@ -3594,51 +3594,6 @@ client.on('messageCreate', async (message) => {
                 inline: false
             });
 
-            // Add XP breakdown if available
-            if (profile.xpBreakdown) {
-                const breakdownText = Object.entries(profile.xpBreakdown)
-                    .map(([key, value]) => {
-                        const formattedKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                        return `**${formattedKey}:** ${formatXPNumber(value)} (${formatEDecimal(value)})`;
-                    })
-                    .join('\n');
-                
-                transactionEmbed.fields.push({
-                    name: '📈 XP Breakdown',
-                    value: breakdownText || 'No breakdown data available',
-                    inline: false
-                });
-            }
-
-            // Add meta key information if available
-            if (profile.metaData) {
-                const metaKeys = Object.keys(profile.metaData);
-                if (metaKeys.length > 0) {
-                    const metaText = metaKeys.map(key => {
-                        const value = profile.metaData[key];
-                        let displayValue = '';
-                        
-                        if (typeof value === 'object' && value !== null) {
-                            if (Array.isArray(value)) {
-                                displayValue = `Array (${value.length} items)`;
-                            } else {
-                                displayValue = `Object (${Object.keys(value).length} keys)`;
-                            }
-                        } else {
-                            displayValue = String(value);
-                        }
-                        
-                        return `**${key}:** ${displayValue}`;
-                    }).join('\n');
-                    
-                    transactionEmbed.fields.push({
-                        name: '🗂️ Meta Keys',
-                        value: metaText,
-                        inline: false
-                    });
-                }
-            }
-
             // Add detailed transaction information in table format
             const transactionRows = [];
             
