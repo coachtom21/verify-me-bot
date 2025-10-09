@@ -3293,52 +3293,74 @@ client.on('messageCreate', async (message) => {
     }
 
     // Handle profile command in wallet channel
-    if (message.content.startsWith('!profile ') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
+    if (message.content.startsWith('!profile') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
         try {
             console.log(`🔍 Profile command received: "${message.content}" in channel: ${message.channel.name}`);
             
-            // Extract username from the command
+            // Check if user is admin
+            const isAdmin = message.author.id === process.env.ADMIN_USER_ID;
+            
+            // Extract arguments from the command
             const args = message.content.split(' ');
-            if (args.length < 2) {
-                await message.reply('❌ **Usage:** `!profile @username` or `!profile username`');
-                return;
-            }
-
-            let targetUsername = args[1];
-            console.log(`🎯 Target username extracted: "${targetUsername}"`);
             
-            // Remove @ symbol if present
-            if (targetUsername.startsWith('@')) {
-                targetUsername = targetUsername.substring(1);
-                console.log(`🔍 After removing @: "${targetUsername}"`);
-            }
-
-            // Handle Discord mentions - extract actual Discord user data
+            let targetUsername;
+            let actualUsername;
             let discordUser = null;
-            let actualUsername = targetUsername;
             
-            if (targetUsername.startsWith('<@!') && targetUsername.endsWith('>')) {
-                const userId = targetUsername.slice(3, -1);
-                console.log(`🔍 Extracted user ID: "${userId}"`);
-                discordUser = client.users.cache.get(userId);
-                if (discordUser) {
-                    actualUsername = discordUser.username;
-                    console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
-                } else {
-                    await message.reply('❌ **User not found.** Please use a valid Discord mention.');
-                    return;
+            if (isAdmin && args.length >= 2) {
+                // Admin can mention any user
+                targetUsername = args[1];
+                console.log(`🎯 Admin targeting username: "${targetUsername}"`);
+                
+                // Remove @ symbol if present
+                if (targetUsername.startsWith('@')) {
+                    targetUsername = targetUsername.substring(1);
+                    console.log(`🔍 After removing @: "${targetUsername}"`);
                 }
-            } else if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
-                const userId = targetUsername.slice(2, -1);
-                console.log(`🔍 Extracted user ID: "${userId}"`);
-                discordUser = client.users.cache.get(userId);
-                if (discordUser) {
-                    actualUsername = discordUser.username;
-                    console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
+
+                // Handle Discord mentions - extract actual Discord user data
+                if (targetUsername.startsWith('<@!') && targetUsername.endsWith('>')) {
+                    const userId = targetUsername.slice(3, -1);
+                    console.log(`🔍 Extracted user ID: "${userId}"`);
+                    discordUser = client.users.cache.get(userId);
+                    if (discordUser) {
+                        actualUsername = discordUser.username;
+                        console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
+                    } else {
+                        await message.reply('❌ **User not found.** Please use a valid Discord mention.');
+                        return;
+                    }
+                } else if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
+                    const userId = targetUsername.slice(2, -1);
+                    console.log(`🔍 Extracted user ID: "${userId}"`);
+                    discordUser = client.users.cache.get(userId);
+                    if (discordUser) {
+                        actualUsername = discordUser.username;
+                        console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
+                    } else {
+                        await message.reply('❌ **User not found.** Please use a valid Discord mention.');
+                        return;
+                    }
                 } else {
-                    await message.reply('❌ **User not found.** Please use a valid Discord mention.');
-                    return;
+                    actualUsername = targetUsername;
                 }
+            } else if (isAdmin && args.length === 1) {
+                // Admin using !profile without mention - show their own profile
+                actualUsername = message.author.username;
+                discordUser = message.author;
+                console.log(`🎯 Admin viewing own profile: "${actualUsername}"`);
+            } else if (!isAdmin && args.length === 1) {
+                // Regular user can only view their own profile
+                actualUsername = message.author.username;
+                discordUser = message.author;
+                console.log(`🎯 Regular user viewing own profile: "${actualUsername}"`);
+            } else if (!isAdmin && args.length >= 2) {
+                // Regular user trying to mention someone else - not allowed
+                await message.reply('❌ **You can only view your own profile.** Use `!profile` without mentioning anyone.');
+                return;
+            } else {
+                await message.reply('❌ **Usage:** `!profile` (for your own profile) or `!profile @username` (admin only)');
+                return;
             }
 
             console.log(`🔍 Final username to search: "${actualUsername}"`);
@@ -3348,6 +3370,7 @@ client.on('messageCreate', async (message) => {
                 await message.reply('❌ **Invalid username.** Please provide a valid username.');
                 return;
             }
+            
             await message.reply('🔍 **Fetching profile data...**');
 
             // Try to get user profile data from API
