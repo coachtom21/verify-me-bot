@@ -82,22 +82,22 @@ The $1M is distributed proportionally based on weighted votes:
 The poll system is **fully automated**! You don't need to wait for admins to create polls manually.
 
 - **Automatic Creation**: New polls are created automatically on the **1st day of every month at 9:00 AM UTC**
-- **Automatic Results**: Polls automatically end and process results after exactly **7 days**
+- **Automatic Results**: Polls automatically end and process results at the **end of the month**
 - **No Manual Intervention**: The entire process runs without admin involvement
 
 ### 📅 Poll Timeline
 - **Day 1**: Poll automatically created and posted to #monthly-redemption
-- **Days 1-7**: Voting period (you can vote anytime during these 7 days)
-- **Day 8**: Poll automatically ends and results are processed **automatically**
-- **Day 8+**: XP rewards are distributed to all participants **automatically**
+- **Days 1-31**: Voting period (you can vote anytime during the entire month)
+- **Last Day of Month**: Poll automatically ends and results are processed **automatically**
+- **End of Month**: XP rewards are distributed to all participants **automatically**
 
 ### 🤖 Automatic Results Processing
-The bot automatically processes poll results after exactly 7 days using a built-in timer:
+The bot automatically processes poll results at the end of each month using a built-in timer:
 
 - **No Manual Intervention**: Results are calculated and posted automatically
 - **Automatic XP Distribution**: All XP rewards are distributed without admin action
 - **Automatic Notifications**: Results are posted to the channel and DMs sent to participants
-- **Built-in Timer**: Uses `setTimeout` to trigger exactly 7 days after poll creation
+- **Built-in Timer**: Uses `setTimeout` to trigger at the end of the month
 
 ### 🔔 What You Can Expect
 - **Consistent Schedule**: Always know when the next poll will appear
@@ -120,8 +120,8 @@ The bot automatically handles these tasks without any human intervention:
    - Stores votes in database
    - Updates poll results in real-time
 
-3. **Results Processing** (Automatically after exactly 7 days)
-   - **Automatic Trigger**: Built-in timer fires exactly 7 days after poll creation
+3. **Results Processing** (Automatically at the end of the month)
+   - **Automatic Trigger**: Built-in timer fires at the end of the month
    - Calculates weighted vote totals
    - Determines winning choice
    - Calculates final XP rewards for all voters
@@ -215,15 +215,17 @@ A: Polls are created automatically on the 1st of every month at 9:00 AM UTC. You
 ### 🔐 Admin-Only Commands
 Only users with admin privileges (set via `ADMIN_USER_ID` environment variable) can use these commands:
 
-| Command | Purpose | Usage |
-|---------|---------|-------|
-| `!createpoll` | Create a new monthly poll manually | `!createpoll` |
-| `!pollresults <message_id>` | Process poll results early | `!pollresults 1234567890` |
-| `!pollparticipants <message_id>` | View detailed participant list | `!pollparticipants 1234567890` |
-| `!participation` | Auto-find and analyze latest poll | `!participation` |
-| `!checkpollchannel` | Verify poll channel accessibility | `!checkpollchannel` |
-| `!pollscheduler` | Check automation status and next poll date | `!pollscheduler` |
-| `!pollhelp` | Show all admin commands | `!pollhelp` |
+**⚠️ Important**: All admin poll commands must be used in the **#monthly-redemption** channel only!
+
+| Command | Purpose | Usage | Channel Restriction |
+|---------|---------|-------|-------------------|
+| `!createpoll` | Create a new monthly poll manually | `!createpoll` | **#monthly-redemption only** |
+| `!pollresults <message_id>` | Process poll results early | `!pollresults 1234567890` | **#monthly-redemption only** |
+| `!pollparticipants <message_id>` | View detailed participant list | `!pollparticipants 1234567890` | **#monthly-redemption only** |
+| `!participation` | Auto-find and analyze latest poll | `!participation` | **#monthly-redemption only** |
+| `!checkpollchannel` | Verify poll channel accessibility | `!checkpollchannel` | **#monthly-redemption only** |
+| `!pollscheduler` | Check automation status and next poll date | `!pollscheduler` | **#monthly-redemption only** |
+| `!pollhelp` | Show all admin commands | `!pollhelp` | **#monthly-redemption only** |
 
 ### 🛠️ Admin Capabilities
 
