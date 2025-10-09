@@ -3639,7 +3639,7 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
-            // Add detailed transaction information
+            // Add detailed transaction information with breakdowns
             const transactionDetails = [];
             
             // Discord Invite Transaction
@@ -3652,30 +3652,71 @@ client.on('messageCreate', async (message) => {
                 transactionDetails.push(`🛒 **Buyer Details:** ${formatXPNumber(profile.xpBreakdown.buyerDetails)} XP`);
             }
             
-            // Talent Show Transaction
-            if (profile.xpBreakdown && profile.xpBreakdown.talentShow > 0) {
-                transactionDetails.push(`🎭 **Talent Show:** ${formatXPNumber(profile.xpBreakdown.talentShow)} XP`);
-            }
-            
             // Seller Details Transaction
             if (profile.xpBreakdown && profile.xpBreakdown.sellerDetails > 0) {
                 transactionDetails.push(`💼 **Seller Details:** ${formatXPNumber(profile.xpBreakdown.sellerDetails)} XP`);
             }
+
+            // Add detailed Discord Poll breakdowns
+            if (profile.metaData && profile.metaData._discord_poll && Array.isArray(profile.metaData._discord_poll)) {
+                const pollEntries = profile.metaData._discord_poll;
+                pollEntries.forEach((poll, index) => {
+                    try {
+                        const pollData = typeof poll === 'string' ? JSON.parse(poll) : poll;
+                        const pollId = pollData.poll_id || 'Unknown';
+                        const vote = pollData.vote || 'Unknown';
+                        const xpAwarded = pollData.xp_awarded || 0;
+                        const submittedAt = pollData.submitted_at ? new Date(pollData.submitted_at).toLocaleDateString() : 'Unknown';
+                        const voteType = pollData.vote_type || 'Unknown';
+                        
+                        // Determine if it's a winning vote or top contributor
+                        let statusInfo = '';
+                        if (voteType === 'xp_final_award') {
+                            statusInfo = ' (Final Award)';
+                        } else if (voteType === 'monthly_poll') {
+                            statusInfo = ' (Initial Vote)';
+                        }
+                        
+                        transactionDetails.push(`🗳️ **Poll #${index + 1}:** ${formatXPNumber(xpAwarded)} XP`);
+                        transactionDetails.push(`   └ Poll ID: ${pollId}`);
+                        transactionDetails.push(`   └ Vote: ${vote}${statusInfo}`);
+                        transactionDetails.push(`   └ Date: ${submittedAt}`);
+                    } catch (error) {
+                        console.log('Error parsing poll data:', error);
+                        transactionDetails.push(`🗳️ **Poll #${index + 1}:** ${formatXPNumber(poll.xp_awarded || 0)} XP (Parse Error)`);
+                    }
+                });
+            }
             
-            // Discord Poll Transaction
-            if (profile.xpBreakdown && profile.xpBreakdown.discordPoll > 0) {
-                transactionDetails.push(`🗳️ **Discord Poll:** ${formatXPNumber(profile.xpBreakdown.discordPoll)} XP`);
+            // Add detailed Talent Show breakdowns
+            if (profile.metaData && profile.metaData._talentshow_entry && Array.isArray(profile.metaData._talentshow_entry)) {
+                const talentEntries = profile.metaData._talentshow_entry;
+                talentEntries.forEach((talent, index) => {
+                    try {
+                        const talentData = typeof talent === 'string' ? JSON.parse(talent) : talent;
+                        const xpAwarded = talentData.xp_awarded || 0;
+                        const submittedAt = talentData.submitted_at ? new Date(talentData.submitted_at).toLocaleDateString() : 'Unknown';
+                        const entryType = talentData.entry_type || 'Talent Show Entry';
+                        
+                        transactionDetails.push(`🎭 **Talent Show #${index + 1}:** ${formatXPNumber(xpAwarded)} XP`);
+                        transactionDetails.push(`   └ Type: ${entryType}`);
+                        transactionDetails.push(`   └ Date: ${submittedAt}`);
+                    } catch (error) {
+                        console.log('Error parsing talent show data:', error);
+                        transactionDetails.push(`🎭 **Talent Show #${index + 1}:** ${formatXPNumber(talent.xp_awarded || 0)} XP (Parse Error)`);
+                    }
+                });
             }
 
             if (transactionDetails.length > 0) {
                 transactionEmbed.fields.push({
-                    name: '📋 Transaction Details',
+                    name: '📋 Detailed Transaction History',
                     value: transactionDetails.join('\n'),
                     inline: false
                 });
             } else {
                 transactionEmbed.fields.push({
-                    name: '📋 Transaction Details',
+                    name: '📋 Detailed Transaction History',
                     value: 'No transaction history found',
                     inline: false
                 });
