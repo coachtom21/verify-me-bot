@@ -3639,22 +3639,34 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
-            // Add detailed transaction information with breakdowns
-            const transactionDetails = [];
+            // Add detailed transaction information in table format
+            const transactionRows = [];
             
             // Discord Invite Transaction
             if (profile.xpBreakdown && profile.xpBreakdown.discordInvite > 0) {
-                transactionDetails.push(`🎉 **Discord Invite:** ${formatXPNumber(profile.xpBreakdown.discordInvite)} XP`);
+                transactionRows.push({
+                    orderDetails: `Discord Join - @${profile.discordUsername} - ${profile.joinDate ? new Date(profile.joinDate).toLocaleString() : 'Unknown Date'}`,
+                    xpAwarded: formatXPNumber(profile.xpBreakdown.discordInvite),
+                    status: 'Released'
+                });
             }
             
             // Buyer Details Transaction
             if (profile.xpBreakdown && profile.xpBreakdown.buyerDetails > 0) {
-                transactionDetails.push(`🛒 **Buyer Details:** ${formatXPNumber(profile.xpBreakdown.buyerDetails)} XP`);
+                transactionRows.push({
+                    orderDetails: `Buyer Details - @${profile.discordUsername} - ${profile.verificationDate ? new Date(profile.verificationDate).toLocaleString() : 'Unknown Date'}`,
+                    xpAwarded: formatXPNumber(profile.xpBreakdown.buyerDetails),
+                    status: 'Released'
+                });
             }
             
             // Seller Details Transaction
             if (profile.xpBreakdown && profile.xpBreakdown.sellerDetails > 0) {
-                transactionDetails.push(`💼 **Seller Details:** ${formatXPNumber(profile.xpBreakdown.sellerDetails)} XP`);
+                transactionRows.push({
+                    orderDetails: `Seller Details - @${profile.discordUsername} - ${profile.verificationDate ? new Date(profile.verificationDate).toLocaleString() : 'Unknown Date'}`,
+                    xpAwarded: formatXPNumber(profile.xpBreakdown.sellerDetails),
+                    status: 'Released'
+                });
             }
 
             // Add detailed Discord Poll breakdowns
@@ -3666,24 +3678,28 @@ client.on('messageCreate', async (message) => {
                         const pollId = pollData.poll_id || 'Unknown';
                         const vote = pollData.vote || 'Unknown';
                         const xpAwarded = pollData.xp_awarded || 0;
-                        const submittedAt = pollData.submitted_at ? new Date(pollData.submitted_at).toLocaleDateString() : 'Unknown';
+                        const submittedAt = pollData.submitted_at ? new Date(pollData.submitted_at).toLocaleString() : 'Unknown Date';
                         const voteType = pollData.vote_type || 'Unknown';
                         
-                        // Determine if it's a winning vote or top contributor
-                        let statusInfo = '';
-                        if (voteType === 'xp_final_award') {
-                            statusInfo = ' (Final Award)';
-                        } else if (voteType === 'monthly_poll') {
-                            statusInfo = ' (Initial Vote)';
-                        }
+                        // Determine vote description
+                        let voteDescription = vote;
+                        if (vote === 'peace') voteDescription = 'peace';
+                        else if (vote === 'voting') voteDescription = 'voting';
+                        else if (vote === 'disaster') voteDescription = 'disaster';
+                        else if (voteType === 'xp_final_award') voteDescription = 'final_xp_award';
                         
-                        transactionDetails.push(`🗳️ **Poll #${index + 1}:** ${formatXPNumber(xpAwarded)} XP`);
-                        transactionDetails.push(`   └ Poll ID: ${pollId}`);
-                        transactionDetails.push(`   └ Vote: ${vote}${statusInfo}`);
-                        transactionDetails.push(`   └ Date: ${submittedAt}`);
+                        transactionRows.push({
+                            orderDetails: `Monthly poll - @${profile.discordUsername} (${voteDescription}) - ${submittedAt}`,
+                            xpAwarded: formatXPNumber(xpAwarded),
+                            status: 'Released'
+                        });
                     } catch (error) {
                         console.log('Error parsing poll data:', error);
-                        transactionDetails.push(`🗳️ **Poll #${index + 1}:** ${formatXPNumber(poll.xp_awarded || 0)} XP (Parse Error)`);
+                        transactionRows.push({
+                            orderDetails: `Monthly poll - @${profile.discordUsername} (Parse Error) - Unknown Date`,
+                            xpAwarded: formatXPNumber(poll.xp_awarded || 0),
+                            status: 'Released'
+                        });
                     }
                 });
             }
@@ -3695,28 +3711,41 @@ client.on('messageCreate', async (message) => {
                     try {
                         const talentData = typeof talent === 'string' ? JSON.parse(talent) : talent;
                         const xpAwarded = talentData.xp_awarded || 0;
-                        const submittedAt = talentData.submitted_at ? new Date(talentData.submitted_at).toLocaleDateString() : 'Unknown';
-                        const entryType = talentData.entry_type || 'Talent Show Entry';
+                        const submittedAt = talentData.submitted_at ? new Date(talentData.submitted_at).toLocaleString() : 'Unknown Date';
+                        const entryType = talentData.entry_type || 'Talentshow entry';
                         
-                        transactionDetails.push(`🎭 **Talent Show #${index + 1}:** ${formatXPNumber(xpAwarded)} XP`);
-                        transactionDetails.push(`   └ Type: ${entryType}`);
-                        transactionDetails.push(`   └ Date: ${submittedAt}`);
+                        transactionRows.push({
+                            orderDetails: `${entryType} - ${submittedAt}`,
+                            xpAwarded: formatXPNumber(xpAwarded),
+                            status: 'Released'
+                        });
                     } catch (error) {
                         console.log('Error parsing talent show data:', error);
-                        transactionDetails.push(`🎭 **Talent Show #${index + 1}:** ${formatXPNumber(talent.xp_awarded || 0)} XP (Parse Error)`);
+                        transactionRows.push({
+                            orderDetails: `Talentshow entry - Unknown Date`,
+                            xpAwarded: formatXPNumber(talent.xp_awarded || 0),
+                            status: 'Released'
+                        });
                     }
                 });
             }
 
-            if (transactionDetails.length > 0) {
+            // Create table format display
+            if (transactionRows.length > 0) {
+                // Create a table-like structure using Discord embed fields
+                const tableContent = transactionRows.map((row, index) => {
+                    const rowNumber = (index + 1).toString().padStart(2, '0');
+                    return `**${rowNumber}.** ${row.orderDetails}\n💰 **XP:** ${row.xpAwarded} | ✅ **Status:** ${row.status}`;
+                }).join('\n\n');
+                
                 transactionEmbed.fields.push({
-                    name: '📋 Detailed Transaction History',
-                    value: transactionDetails.join('\n'),
+                    name: '📋 Transaction History',
+                    value: tableContent,
                     inline: false
                 });
             } else {
                 transactionEmbed.fields.push({
-                    name: '📋 Detailed Transaction History',
+                    name: '📋 Transaction History',
                     value: 'No transaction history found',
                     inline: false
                 });
