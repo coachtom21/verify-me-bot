@@ -2081,10 +2081,14 @@ client.once('ready', async () => {
             if (pollResult.success) {
                 console.log(`✅ Enhanced monthly poll created successfully: ${pollResult.messageId}`);
                 
-                // Schedule automatic results processing for 7 days later
+                // Schedule automatic results processing for the last day of the month at 11:59 PM
+                const now = new Date();
+                const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                const timeUntilEndOfMonth = lastDayOfMonth.getTime() - now.getTime();
+                
                 setTimeout(async () => {
                     try {
-                        console.log('📊 Processing scheduled poll results...');
+                        console.log('📊 Processing scheduled poll results at end of month...');
                         const results = await displayEnhancedPollResults(pollResult.messageId);
                         
                         if (results.success) {
@@ -2095,12 +2099,12 @@ client.once('ready', async () => {
                     } catch (error) {
                         console.error('❌ Error processing scheduled poll results:', error);
                     }
-                }, 7 * 24 * 60 * 60 * 1000); // 7 days
+                }, timeUntilEndOfMonth);
                 
                 // Send notification to admin
                 const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
                 if (adminUser) {
-                    await adminUser.send(`🗳️ **Monthly Resource Allocation Poll Created!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: 7 days\n- End Time: <t:${Math.floor(pollResult.endTime / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief\n- Auto-results: Enabled`);
+                    await adminUser.send(`🗳️ **Monthly Resource Allocation Poll Created!**\n- Channel: <#${pollResult.channelId}>\n- Message ID: \`${pollResult.messageId}\`\n- Duration: Until end of month\n- End Time: <t:${Math.floor(lastDayOfMonth.getTime() / 1000)}:F>\n- Options: 🕊️ Peace, 🗳️ Voting, 🆘 Disaster Relief\n- Auto-results: Enabled for end of month`);
                 }
             } else {
                 console.error('❌ Failed to create monthly poll:', pollResult.error);
@@ -2316,6 +2320,12 @@ client.on('messageCreate', async (message) => {
     
     // Handle command to create enhanced monthly poll
     if (message.content === '!createpoll' && message.author.id === process.env.ADMIN_USER_ID) {
+        // Check if command is being used in the correct channel
+        if (message.channel.id !== process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+            await message.reply(`❌ **This command can only be used in the #monthly-redemption channel!**\nPlease use this command in the correct channel.`);
+            return;
+        }
+        
         const pollCreationId = `poll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         console.log(`🔍 !createpoll command triggered by ${message.author.tag} (${message.author.id}) at ${new Date().toISOString()}`);
         console.log(`🔍 Poll creation ID: ${pollCreationId}`);
@@ -2422,6 +2432,12 @@ client.on('messageCreate', async (message) => {
     
     // Handle command to get enhanced poll results
     if (message.content.startsWith('!pollresults ') && message.author.id === process.env.ADMIN_USER_ID) {
+        // Check if command is being used in the correct channel
+        if (message.channel.id !== process.env.MONTHLY_REDEMPTION_CHANNEL_ID) {
+            await message.reply(`❌ **This command can only be used in the #monthly-redemption channel!**\nPlease use this command in the correct channel.`);
+            return;
+        }
+        
         try {
             const messageId = message.content.split(' ')[1];
             if (!messageId) {
