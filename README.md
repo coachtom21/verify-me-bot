@@ -64,7 +64,8 @@ View user profile details including XP, roles, and membership status:
 ### Transaction Command
 View detailed transaction history and meta data:
 
-**Usage:** `!transaction`
+**Admin Usage:** `!transaction @username` or `!transaction username` (can view any user's transaction data)
+**Regular User Usage:** `!transaction` (can only view their own transaction data)
 
 **Location:** Only works in the `#wallet` channel (set via `WALLET_CHANNEL_ID` environment variable)
 
@@ -80,6 +81,8 @@ View detailed transaction history and meta data:
   - 🗳️ Discord Poll XP
 - Displays account status and verification information
 - Shows membership level and email
+- **Admin-only**: Can view any user's transaction data by mentioning them
+- **User restriction**: Regular users can only view their own transaction data
 
 ## Environment Variables
 
