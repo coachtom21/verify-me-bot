@@ -3481,16 +3481,89 @@ client.on('messageCreate', async (message) => {
     }
 
     // Handle transaction command in wallet channel
-    if (message.content === '!transaction' && message.channel.id === process.env.WALLET_CHANNEL_ID) {
+    if (message.content.startsWith('!transaction') && message.channel.id === process.env.WALLET_CHANNEL_ID) {
         try {
-            console.log(`🔍 Transaction command received from: ${message.author.tag} in channel: ${message.channel.name}`);
+            console.log(`🔍 Transaction command received: "${message.content}" in channel: ${message.channel.name}`);
+            
+            // Check if user is admin
+            const isAdmin = message.author.id === process.env.ADMIN_USER_ID;
+            
+            // Extract arguments from the command
+            const args = message.content.split(' ');
+            
+            let targetUsername;
+            let actualUsername;
+            let discordUser = null;
+            
+            if (isAdmin && args.length >= 2) {
+                // Admin can mention any user
+                targetUsername = args[1];
+                console.log(`🎯 Admin targeting username: "${targetUsername}"`);
+                
+                // Remove @ symbol if present
+                if (targetUsername.startsWith('@')) {
+                    targetUsername = targetUsername.substring(1);
+                    console.log(`🔍 After removing @: "${targetUsername}"`);
+                }
+
+                // Handle Discord mentions - extract actual Discord user data
+                if (targetUsername.startsWith('<@!') && targetUsername.endsWith('>')) {
+                    const userId = targetUsername.slice(3, -1);
+                    console.log(`🔍 Extracted user ID: "${userId}"`);
+                    discordUser = client.users.cache.get(userId);
+                    if (discordUser) {
+                        actualUsername = discordUser.username;
+                        console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
+                    } else {
+                        await message.reply('❌ **User not found.** Please use a valid Discord mention.');
+                        return;
+                    }
+                } else if (targetUsername.startsWith('<@') && targetUsername.endsWith('>')) {
+                    const userId = targetUsername.slice(2, -1);
+                    console.log(`🔍 Extracted user ID: "${userId}"`);
+                    discordUser = client.users.cache.get(userId);
+                    if (discordUser) {
+                        actualUsername = discordUser.username;
+                        console.log(`🔍 Resolved to Discord user: ${discordUser.username} (${discordUser.displayName})`);
+                    } else {
+                        await message.reply('❌ **User not found.** Please use a valid Discord mention.');
+                        return;
+                    }
+                } else {
+                    actualUsername = targetUsername;
+                }
+            } else if (isAdmin && args.length === 1) {
+                // Admin using !transaction without mention - show their own transaction data
+                actualUsername = message.author.username;
+                discordUser = message.author;
+                console.log(`🎯 Admin viewing own transaction data: "${actualUsername}"`);
+            } else if (!isAdmin && args.length === 1) {
+                // Regular user can only view their own transaction data
+                actualUsername = message.author.username;
+                discordUser = message.author;
+                console.log(`🎯 Regular user viewing own transaction data: "${actualUsername}"`);
+            } else if (!isAdmin && args.length >= 2) {
+                // Regular user trying to mention someone else - not allowed
+                await message.reply('❌ **You can only view your own transaction data.** Use `!transaction` without mentioning anyone.');
+                return;
+            } else {
+                await message.reply('❌ **Usage:** `!transaction` (for your own data) or `!transaction @username` (admin only)');
+                return;
+            }
+
+            console.log(`🔍 Final username to search: "${actualUsername}"`);
+            
+            // Check if username is empty or just spaces
+            if (!actualUsername || actualUsername.trim() === '') {
+                await message.reply('❌ **Invalid username.** Please provide a valid username.');
+                return;
+            }
             
             await message.reply('🔍 **Fetching transaction data...**');
 
-            // Get user's transaction data from API
-            const username = message.author.username;
-            console.log(`📡 Calling getUserProfileData for transaction data: "${username}"`);
-            const profileResult = await getUserProfileData(username);
+            // Try to get user transaction data from API
+            console.log(`📡 Calling getUserProfileData for transaction data: "${actualUsername}"`);
+            const profileResult = await getUserProfileData(actualUsername);
             console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
@@ -3504,9 +3577,9 @@ client.on('messageCreate', async (message) => {
             const transactionEmbed = {
                 title: `📊 Transaction History: ${profile.fullName}`,
                 color: 0x0099ff,
-                thumbnail: {
-                    url: message.author.displayAvatarURL()
-                },
+                thumbnail: discordUser ? {
+                    url: discordUser.displayAvatarURL()
+                } : undefined,
                 fields: [],
                 footer: {
                     text: `SmallStreet Transaction Data • Discord ID: ${profile.discordId || 'N/A'}`
