@@ -1482,6 +1482,7 @@ async function getUserProfileData(discordUsername) {
                         membership: membershipName,
                         totalXP: totalXP,
                         xpBreakdown: xpBreakdown,
+                        metaData: metaData,
                         discordId: discordInvite.discord_id,
                         joinDate: discordInvite.joined_at,
                         verificationDate: discordInvite.verification_date
@@ -3475,6 +3476,150 @@ client.on('messageCreate', async (message) => {
         } catch (error) {
             console.error('Profile command error:', error);
             await message.reply(`❌ **Error displaying profile:** ${error.message}`);
+        }
+        return;
+    }
+
+    // Handle transaction command in wallet channel
+    if (message.content === '!transaction' && message.channel.id === process.env.WALLET_CHANNEL_ID) {
+        try {
+            console.log(`🔍 Transaction command received from: ${message.author.tag} in channel: ${message.channel.name}`);
+            
+            await message.reply('🔍 **Fetching transaction data...**');
+
+            // Get user's transaction data from API
+            const username = message.author.username;
+            console.log(`📡 Calling getUserProfileData for transaction data: "${username}"`);
+            const profileResult = await getUserProfileData(username);
+            console.log(`📊 Profile result:`, profileResult);
+            
+            if (!profileResult.success) {
+                await message.reply(`❌ **Error fetching transaction data:** ${profileResult.error}`);
+                return;
+            }
+
+            const profile = profileResult.data;
+            
+            // Create transaction embed
+            const transactionEmbed = {
+                title: `📊 Transaction History: ${profile.fullName}`,
+                color: 0x0099ff,
+                thumbnail: {
+                    url: message.author.displayAvatarURL()
+                },
+                fields: [],
+                footer: {
+                    text: `SmallStreet Transaction Data • Discord ID: ${profile.discordId || 'N/A'}`
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Add total XP summary
+            transactionEmbed.fields.push({
+                name: '💰 Total XP Summary',
+                value: `**Total XP:** ${formatXPNumber(profile.totalXP) || '0'}\n**Formatted:** ${formatEDecimal(profile.totalXP) || 'e+0'}`,
+                inline: false
+            });
+
+            // Add XP breakdown if available
+            if (profile.xpBreakdown) {
+                const breakdownText = Object.entries(profile.xpBreakdown)
+                    .map(([key, value]) => {
+                        const formattedKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                        return `**${formattedKey}:** ${formatXPNumber(value)} (${formatEDecimal(value)})`;
+                    })
+                    .join('\n');
+                
+                transactionEmbed.fields.push({
+                    name: '📈 XP Breakdown',
+                    value: breakdownText || 'No breakdown data available',
+                    inline: false
+                });
+            }
+
+            // Add meta key information if available
+            if (profile.metaData) {
+                const metaKeys = Object.keys(profile.metaData);
+                if (metaKeys.length > 0) {
+                    const metaText = metaKeys.map(key => {
+                        const value = profile.metaData[key];
+                        let displayValue = '';
+                        
+                        if (typeof value === 'object' && value !== null) {
+                            if (Array.isArray(value)) {
+                                displayValue = `Array (${value.length} items)`;
+                            } else {
+                                displayValue = `Object (${Object.keys(value).length} keys)`;
+                            }
+                        } else {
+                            displayValue = String(value);
+                        }
+                        
+                        return `**${key}:** ${displayValue}`;
+                    }).join('\n');
+                    
+                    transactionEmbed.fields.push({
+                        name: '🗂️ Meta Keys',
+                        value: metaText,
+                        inline: false
+                    });
+                }
+            }
+
+            // Add detailed transaction information
+            const transactionDetails = [];
+            
+            // Discord Invite Transaction
+            if (profile.xpBreakdown && profile.xpBreakdown.discordInvite > 0) {
+                transactionDetails.push(`🎉 **Discord Invite:** ${formatXPNumber(profile.xpBreakdown.discordInvite)} XP`);
+            }
+            
+            // Buyer Details Transaction
+            if (profile.xpBreakdown && profile.xpBreakdown.buyerDetails > 0) {
+                transactionDetails.push(`🛒 **Buyer Details:** ${formatXPNumber(profile.xpBreakdown.buyerDetails)} XP`);
+            }
+            
+            // Talent Show Transaction
+            if (profile.xpBreakdown && profile.xpBreakdown.talentShow > 0) {
+                transactionDetails.push(`🎭 **Talent Show:** ${formatXPNumber(profile.xpBreakdown.talentShow)} XP`);
+            }
+            
+            // Seller Details Transaction
+            if (profile.xpBreakdown && profile.xpBreakdown.sellerDetails > 0) {
+                transactionDetails.push(`💼 **Seller Details:** ${formatXPNumber(profile.xpBreakdown.sellerDetails)} XP`);
+            }
+            
+            // Discord Poll Transaction
+            if (profile.xpBreakdown && profile.xpBreakdown.discordPoll > 0) {
+                transactionDetails.push(`🗳️ **Discord Poll:** ${formatXPNumber(profile.xpBreakdown.discordPoll)} XP`);
+            }
+
+            if (transactionDetails.length > 0) {
+                transactionEmbed.fields.push({
+                    name: '📋 Transaction Details',
+                    value: transactionDetails.join('\n'),
+                    inline: false
+                });
+            } else {
+                transactionEmbed.fields.push({
+                    name: '📋 Transaction Details',
+                    value: 'No transaction history found',
+                    inline: false
+                });
+            }
+
+            // Add membership and verification info
+            transactionEmbed.fields.push({
+                name: '🏆 Account Status',
+                value: `**Membership:** ${profile.membership || 'Unverified'}\n**Email:** ${profile.email || 'Not available'}\n**Verified:** ${profile.verificationDate ? new Date(profile.verificationDate).toLocaleDateString() : 'Not verified'}`,
+                inline: false
+            });
+
+            await message.reply({ embeds: [transactionEmbed] });
+
+        } catch (error) {
+            console.error('Transaction command error:', error);
+            await message.reply(`❌ **Error displaying transaction data:** ${error.message}`);
         }
         return;
     }

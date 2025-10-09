@@ -61,6 +61,26 @@ View user profile details including XP, roles, and membership status:
 - **Admin-only**: Can view any user's profile by mentioning them
 - **User restriction**: Regular users can only view their own profile
 
+### Transaction Command
+View detailed transaction history and meta data:
+
+**Usage:** `!transaction`
+
+**Location:** Only works in the `#wallet` channel (set via `WALLET_CHANNEL_ID` environment variable)
+
+**Features:**
+- Displays total XP summary with formatted numbers
+- Shows detailed XP breakdown by transaction type
+- Lists all meta keys and their values
+- Shows transaction details for each XP source:
+  - 🎉 Discord Invite XP
+  - 🛒 Buyer Details XP
+  - 🎭 Talent Show XP
+  - 💼 Seller Details XP
+  - 🗳️ Discord Poll XP
+- Displays account status and verification information
+- Shows membership level and email
+
 ## Environment Variables
 
 - `DISCORD_TOKEN`: Your Discord bot token
