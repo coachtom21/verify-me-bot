@@ -44,7 +44,8 @@ npm start
 ### Profile Command
 View user profile details including XP, roles, and membership status:
 
-**Usage:** `!profile @username` or `!profile username`
+**Admin Usage:** `!profile @username` or `!profile username` (can view any user's profile)
+**Regular User Usage:** `!profile` (can only view their own profile)
 
 **Location:** Only works in the `#wallet` channel (set via `WALLET_CHANNEL_ID` environment variable)
 
@@ -57,6 +58,8 @@ View user profile details including XP, roles, and membership status:
 - Shows membership verification status
 - Displays XP breakdown for verified users
 - Shows power tier based on XP level
+- **Admin-only**: Can view any user's profile by mentioning them
+- **User restriction**: Regular users can only view their own profile
 
 ## Environment Variables
 
