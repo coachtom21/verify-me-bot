@@ -446,6 +446,14 @@ async function fetchWithRetry(url, options = {}, maxRetries = 5, initialDelay = 
     throw lastError;
 }
 
+// Function to generate a random ID code
+function generateRandomId() {
+    // Generate a random alphanumeric code: timestamp + random string
+    const timestamp = Date.now().toString(36);
+    const randomStr = Math.random().toString(36).substring(2, 15);
+    return `${timestamp}-${randomStr}`.toUpperCase();
+}
+
 // Function to insert user data into SmallStreet database
 async function insertUserToSmallStreetDatabase(userData) {
     try {
@@ -711,12 +719,13 @@ async function insertUserToSmallStreetUsermeta(userData) {
         
         // Prepare data in the correct format for the API
         const apiData = {
-                discord_id: userData.discordId,
-                discord_username: userData.discordUsername,
-                discord_display_name: userData.displayName,
+            id: generateRandomId(),
+            discord_id: userData.discordId,
+            discord_username: userData.discordUsername,
+            discord_display_name: userData.displayName,
             email: userData.email,
             joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
-                guild_id: userData.guildId,
+            guild_id: userData.guildId,
             joined_via_invite: userData.inviteUrl,
             xp_awarded: 5000000
         };
@@ -871,6 +880,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
         
         // Prepare data in the correct format for the API
         const apiData = {
+            id: generateRandomId(),
             discord_id: userData.discordId,
             discord_username: userData.discordUsername,
             discord_display_name: userData.displayName,
