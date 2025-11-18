@@ -717,9 +717,13 @@ async function insertUserToSmallStreetUsermeta(userData) {
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
         
+        // Generate random ID for this verification
+        const randomId = generateRandomId();
+        console.log(`🆔 Generated random ID: ${randomId}`);
+        
         // Prepare data in the correct format for the API
         const apiData = {
-            id: generateRandomId(),
+            id: randomId,
             discord_id: userData.discordId,
             discord_username: userData.discordUsername,
             discord_display_name: userData.displayName,
@@ -731,6 +735,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
         };
         
         console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
+        console.log(`🆔 ID field included in request: ${apiData.id}`);
         
         // Send data to the custom API endpoint
         try {
@@ -878,9 +883,13 @@ async function insertUserToSmallStreetUsermeta(userData) {
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
         
+        // Generate random ID for this verification
+        const randomId = generateRandomId();
+        console.log(`🆔 Generated random ID: ${randomId}`);
+        
         // Prepare data in the correct format for the API
         const apiData = {
-            id: generateRandomId(),
+            id: randomId,
             discord_id: userData.discordId,
             discord_username: userData.discordUsername,
             discord_display_name: userData.displayName,
@@ -892,6 +901,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
         };
         
         console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
+        console.log(`🆔 ID field included in request: ${apiData.id}`);
         
         // Send data to the custom API endpoint
         try {
@@ -905,6 +915,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
             
             console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
             console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
+            console.log(`🆔 Verifying ID in request body: ${apiData.id}`);
             
             const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
                 method: 'POST',
