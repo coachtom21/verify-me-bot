@@ -1966,6 +1966,65 @@ async function displayEnhancedPollResults(messageId) {
     }
 }
 
+// Get user assignment data (branch, POC, roles)
+async function getUserAssignmentData(member) {
+    try {
+        // TODO: Replace with actual API call to get user assignment data
+        // For now, using placeholder/default values
+        // You can integrate with your API endpoint here
+        
+        // Example API call (uncomment and modify when API is ready):
+        // const response = await fetch(`https://www.smallstreet.app/wp-json/myapi/v1/user-assignment?discord_id=${member.user.id}`, {
+        //     headers: { 'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}` }
+        // });
+        // const data = await response.json();
+        
+        // Get user's current roles
+        const memberRoles = member.roles.cache;
+        
+        // Try to find branch, buyer POC, and seller POC roles
+        // These role names/IDs should be configured or fetched from API
+        let branchRoleMention = 'Not assigned';
+        let buyerPOCRoleMention = 'Not assigned';
+        let sellerPOCRoleMention = 'Not assigned';
+        
+        // Check for roles (you can customize these role names/IDs)
+        memberRoles.forEach(role => {
+            const roleName = role.name.toLowerCase();
+            if (roleName.includes('branch') || roleName.includes('peace pentagon')) {
+                branchRoleMention = `<@&${role.id}>`;
+            } else if (roleName.includes('buyer') || roleName.includes('buyer poc')) {
+                buyerPOCRoleMention = `<@&${role.id}>`;
+            } else if (roleName.includes('seller') || roleName.includes('seller poc')) {
+                sellerPOCRoleMention = `<@&${role.id}>`;
+            }
+        });
+        
+        // Return assignment data (using placeholders until API is integrated)
+        return {
+            branchName: 'TBD', // Replace with data.branchName when API is ready
+            branchCode: 'TBD', // Replace with data.branchCode when API is ready
+            buyerPOCName: 'TBD', // Replace with data.buyerPOCName when API is ready
+            sellerPOCName: 'TBD', // Replace with data.sellerPOCName when API is ready
+            branchRoleMention: branchRoleMention,
+            buyerPOCRoleMention: buyerPOCRoleMention,
+            sellerPOCRoleMention: sellerPOCRoleMention
+        };
+    } catch (error) {
+        console.error('Error fetching user assignment data:', error);
+        // Return default values on error
+        return {
+            branchName: 'TBD',
+            branchCode: 'TBD',
+            buyerPOCName: 'TBD',
+            sellerPOCName: 'TBD',
+            branchRoleMention: 'Not assigned',
+            buyerPOCRoleMention: 'Not assigned',
+            sellerPOCRoleMention: 'Not assigned'
+        };
+    }
+}
+
 // Assign role based on membership
 async function assignRoleBasedOnMembership(member, membershipType) {
     try {
@@ -2249,20 +2308,44 @@ client.on('guildMemberAdd', async (member) => {
         console.log(`👋 Member joined: ${member.user.tag} - Database insertion will happen during QR verification with real email`);
 
         // Send DM with instructions (optional - don't fail if DM is disabled)
-            try {
-                await member.send(`🎉 **Welcome to Gracebook!**
+        try {
+            // Get user assignment data
+            const assignmentData = await getUserAssignmentData(member);
+            const displayName = member.displayName || member.user.username;
+            
+            // Build the new DM message
+            const dmMessage = `Hey ${displayName} — you're in. This is your Gracebook "receipt."
 
-🎯 **Next Steps:**
-• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership
-• Get your Discord roles based on your membership level
-• Receive **5,000,000 XP** rewards after verification
+🔐 Non-Negotiables (read once)
+• d-DAO General Ledger is NON-CUSTODIAL and DOES NOT TOUCH MONEY.
+• The Voluntary Fulfillment Network (VFN) is the ONLY custodial/MSB layer (fiat activity lives there, not here).
+• Proof-of-Delivery is a 2-scan protocol (seller scan → buyer acceptance scan).
+• Language rule: these are "vouchers / hang tags / delivery credentials" — never "stamps."
 
-🔗 **SmallStreet Account:** https://www.smallstreet.app/login/
+🧭 Your Serendipity Assignment (geo + timestamp)
+🟦 Peace Pentagon Branch: ${assignmentData.branchName} (${assignmentData.branchCode})
+🏠 Buyer POC (Local): ${assignmentData.buyerPOCName}
+🌍 Seller POC (Global): ${assignmentData.sellerPOCName}
 
-*Make Everyone Great Again* 🚀`);
-                
+🎭 Your Roles in Discord
+• Branch Role: ${assignmentData.branchRoleMention}
+• Buyer POC Role: ${assignmentData.buyerPOCRoleMention}
+• Seller POC Role: ${assignmentData.sellerPOCRoleMention}
+
+🧩 What you can do now
+1) Open: #proof-of-delivery → read "2-Scan Quickstart"
+2) Add your QRTiger v-card in #vcard (required for participation)
+3) Confirm payout rail in #payout (PayPal/Venmo per your region)
+
+📌 Reminder about value flow
+• A confirmed delivery books a $10.30 trade-credit event in ledger terms (XP accounting only).
+• Any real-world payment activity (if/when used) is handled outside the ledger by VFN participants.
+
+If anything looks wrong, type: /my-assignment`;
+            
+            await member.send(dmMessage);
             console.log(`📧 Sent welcome DM to ${member.user.tag}`);
-            } catch (dmError) {
+        } catch (dmError) {
             console.log(`⚠️ Could not send welcome DM to ${member.user.tag}: ${dmError.message} (This is normal if user has DMs disabled)`);
         }
         
