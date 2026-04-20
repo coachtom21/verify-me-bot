@@ -454,7 +454,7 @@ function generateRandomId() {
     return `${timestamp}-${randomStr}`.toUpperCase();
 }
 
-// SmallStreet discord-invite POST expects joined_at like "2026-04-20 15:30:00" (UTC)
+// SmallStreet POST /discord-user optional joined_at format: "2026-04-20 15:30:00" (UTC)
 function formatJoinedAtForApi(isoOrDate) {
     const d = isoOrDate ? new Date(isoOrDate) : new Date();
     if (Number.isNaN(d.getTime())) {
@@ -466,7 +466,17 @@ function formatJoinedAtForApi(isoOrDate) {
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
-const DISCORD_INVITE_POST_URL = 'https://www.smallstreet.app/wp-json/myapi/v1/discord-invite';
+// POST /myapi/v1/discord-user — record invite (required JSON: email, discord_id, id; optional: discord_username, discord_display_name, joined_at, guild_id, joined_via_invite, xp_awarded). Bearer: SMALLSTREET_API_KEY.
+// GET /myapi/v1/discord-invites — list only, no body (see getDiscordInvitesData). There is no POST "discord-invite" singular in this API.
+const DISCORD_VERIFY_POST_DEFAULT = 'https://www.smallstreet.app/wp-json/myapi/v1/discord-user';
+
+function getDiscordVerifyPostUrl() {
+    const single = process.env.SMALLSTREET_DISCORD_VERIFY_POST_URL;
+    if (single && typeof single === 'string' && single.trim()) {
+        return single.trim();
+    }
+    return DISCORD_VERIFY_POST_DEFAULT;
+}
 
 // Function to insert user data into SmallStreet database
 async function insertUserToSmallStreetDatabase(userData) {
@@ -974,17 +984,16 @@ async function verifySmallStreetMembership(email) {
     }
 }
 
-// POST Discord invite / join payload to SmallStreet (myapi/v1/discord-invite)
+// POST /myapi/v1/discord-user to persist QR verification (see getDiscordVerifyPostUrl).
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 Sending discord-invite payload for: ${userData.discordUsername}`);
+        console.log(`🔗 POST discord-user for: ${userData.discordUsername}`);
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
 
         const eventId = userData.eventId ? String(userData.eventId) : generateRandomId();
         const xpAwarded = userData.xpAwarded != null ? Number(userData.xpAwarded) : 5000000;
 
-        // Payload matches SmallStreet discord-invite API contract
         const apiData = {
             email: userData.email,
             discord_id: String(userData.discordId),
@@ -997,7 +1006,7 @@ async function insertUserToSmallStreetUsermeta(userData) {
             xp_awarded: xpAwarded
         };
 
-        console.log(`📝 discord-invite body:`, JSON.stringify(apiData, null, 2));
+        console.log(`📝 discord-user body:`, JSON.stringify(apiData, null, 2));
 
         try {
             const requestHeaders = {
@@ -1006,23 +1015,26 @@ async function insertUserToSmallStreetUsermeta(userData) {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             };
 
-            const apiResponse = await fetchWithRetry(DISCORD_INVITE_POST_URL, {
+            const postUrl = getDiscordVerifyPostUrl();
+            console.log(`📝 POST ${postUrl}`);
+
+            const apiResponse = await fetchWithRetry(postUrl, {
                 method: 'POST',
                 headers: requestHeaders,
                 body: JSON.stringify(apiData)
             });
-            
+
             const apiResult = await apiResponse.json();
             console.log(`📥 API Response Status: ${apiResponse.status} ${apiResponse.statusText}`);
             console.log(`📥 API Response Body:`, JSON.stringify(apiResult, null, 2));
-            
+
             if (apiResponse.ok) {
-                console.log(`✅ Successfully sent data to SmallStreet API`);
+                console.log(`✅ SmallStreet discord-user saved`);
                 return { success: true, data: apiResult };
-            } else {
-                console.error(`❌ API request failed:`, apiResult);
-                return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
             }
+
+            console.error(`❌ API request failed:`, apiResult);
+            return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
         } catch (apiError) {
             console.error('❌ Error sending data to API:', apiError);
             console.error('❌ API error stack:', apiError.stack);
