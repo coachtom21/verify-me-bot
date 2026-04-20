@@ -93,7 +93,7 @@ app.get('/api/poll-xp/:pollId', async (req, res) => {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
@@ -240,7 +240,7 @@ app.get('/api/polls-xp', async (req, res) => {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
@@ -533,7 +533,7 @@ async function storePollData(pollData) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             body: JSON.stringify(pollData)
@@ -582,7 +582,7 @@ async function updatePollDataXP(pollId, discordId, finalXP) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             body: JSON.stringify(finalXPData)
@@ -680,7 +680,7 @@ async function updatePollDataDirect(pollId, discordId, finalXP, email, username)
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             body: JSON.stringify(directUpdateData)
@@ -706,90 +706,6 @@ async function updatePollDataDirect(pollId, discordId, finalXP, email, username)
     } catch (error) {
         console.error('❌ Error in direct XP update:', error);
         return { success: false, error: error.message };
-    }
-}
-
-
-// Function to send Discord user data to SmallStreet API
-async function insertUserToSmallStreetUsermeta(userData) {
-    try {
-        console.log(`🔗 Sending Discord user data to SmallStreet API: ${userData.discordUsername}`);
-        console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
-        console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
-        
-        // Generate random ID for this verification
-        const randomId = generateRandomId();
-        console.log(`🆔 Generated random ID: ${randomId}`);
-        
-        // Prepare data in the correct format for the API
-        const apiData = {
-            id: randomId,
-            discord_id: userData.discordId,
-            discord_username: userData.discordUsername,
-            discord_display_name: userData.displayName,
-            email: userData.email,
-            joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
-            guild_id: userData.guildId,
-            joined_via_invite: userData.inviteUrl,
-            xp_awarded: 5000000
-        };
-        
-        console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
-        console.log(`🆔 ID field included in request: ${apiData.id}`);
-        
-        // Send data to the custom API endpoint
-        try {
-            console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
-            console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
-            console.log(`🔑 Full API Key: ${process.env.SMALLSTREET_API_KEY}`);
-            console.log(`🔑 API Key Length: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.length : 0}`);
-            
-            const requestHeaders = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
-            };
-            
-            console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
-            console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
-            console.log(`📤 Authorization Header Value: "Bearer ${process.env.SMALLSTREET_API_KEY}"`);
-            
-            const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
-                method: 'POST',
-                headers: requestHeaders,
-                body: JSON.stringify(apiData)
-            });
-            
-            const apiResult = await apiResponse.json();
-            console.log(`📥 API Response Status: ${apiResponse.status} ${apiResponse.statusText}`);
-            console.log(`📥 API Response Body:`, JSON.stringify(apiResult, null, 2));
-            
-            if (apiResponse.ok) {
-                console.log(`✅ Successfully sent data to SmallStreet API`);
-                return { success: true, data: apiResult };
-        } else {
-                console.error(`❌ API request failed:`, apiResult);
-                return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
-            }
-        } catch (apiError) {
-            console.error('❌ Error sending data to API:', apiError);
-            console.error('❌ API error stack:', apiError.stack);
-            return { success: false, error: `API error: ${apiError.message}`, details: apiError };
-        }
-        
-    } catch (error) {
-        console.error('❌ Error inserting user to SmallStreet usermeta:', error);
-        console.error('❌ Error stack trace:', error.stack);
-        console.error('❌ Error details:', {
-            message: error.message,
-            code: error.code,
-            status: error.status,
-            response: error.response ? {
-                status: error.response.status,
-                statusText: error.response.statusText,
-                data: error.response.data
-            } : 'No response object'
-        });
-        return { success: false, error: error.message, details: error };
     }
 }
 
@@ -906,14 +822,13 @@ async function insertUserToSmallStreetUsermeta(userData) {
         // Send data to the custom API endpoint
         try {
             console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
-            console.log(`🔑 Using API Key: ${process.env.SMALLSTREET_API_KEY ? process.env.SMALLSTREET_API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
+            console.log(`🔑 API Key configured:`, !!process.env.SMALLSTREET_API_KEY);
             
             const requestHeaders = {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
             };
             
-            console.log(`📤 Request Headers:`, JSON.stringify(requestHeaders, null, 2));
             console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
             console.log(`🆔 Verifying ID in request body: ${apiData.id}`);
             
@@ -1102,17 +1017,76 @@ function getChoiceFromEmoji(emoji) {
     return emojiMap[emoji] || null;
 }
 
-// Format e-decimal notation
-function formatEDecimal(xp) {
-    if (xp === 0) return 'e+0';
-    const exp = Math.floor(Math.log10(Math.abs(xp)));
-    return `e+${exp}`;
+// Digit-only strings for API fields like xp_units (may exceed Number.MAX_SAFE_INTEGER)
+function normalizeDigitString(val) {
+    if (val == null) return '0';
+    const s = String(val).replace(/\s/g, '');
+    return /^\d+$/.test(s) ? s : '0';
 }
 
-// Function to format XP as readable number
+function sumBigIntDigitStrings(...values) {
+    let t = 0n;
+    for (const v of values) {
+        try {
+            t += BigInt(normalizeDigitString(v));
+        } catch (_) {}
+    }
+    return t.toString();
+}
+
+function sumXpUnitsFromScanList(list) {
+    if (!Array.isArray(list)) return '0';
+    let t = 0n;
+    for (const row of list) {
+        try {
+            t += BigInt(normalizeDigitString(row?.xp_units));
+        } catch (_) {}
+    }
+    return t.toString();
+}
+
+function legacyMetaArrayXpSum(arr, field = 'xp_awarded') {
+    if (!Array.isArray(arr)) return '0';
+    let t = 0n;
+    for (const item of arr) {
+        const rec = typeof item === 'string'
+            ? (() => { try { return JSON.parse(item); } catch { return null; } })()
+            : item;
+        if (!rec) continue;
+        try {
+            t += BigInt(normalizeDigitString(rec[field]));
+        } catch (_) {}
+    }
+    return t.toString();
+}
+
+function xpGreaterThanZero(xp) {
+    try {
+        return BigInt(normalizeDigitString(xp)) > 0n;
+    } catch (_) {
+        const n = Number(xp);
+        return Number.isFinite(n) && n > 0;
+    }
+}
+
+// Format e-decimal notation (works for large integer strings)
+function formatEDecimal(xp) {
+    const plain = normalizeDigitString(typeof xp === 'number' && Number.isFinite(xp) ? String(Math.trunc(xp)) : xp);
+    if (plain === '0') return 'e+0';
+    return `e+${plain.length - 1}`;
+}
+
+// Format XP with thousands separators (supports bigint-sized digit strings)
 function formatXPNumber(xp) {
-    if (xp === 0) return '0';
-    return xp.toLocaleString(); // Shows full number with commas
+    if (xp === 0 || xp === 0n) return '0';
+    const str = typeof xp === 'bigint' ? xp.toString() : String(xp);
+    const plain = str.replace(/,/g, '');
+    if (plain === '0') return '0';
+    if (/^\d+$/.test(plain)) {
+        return plain.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    if (typeof xp === 'number' && Number.isFinite(xp)) return xp.toLocaleString();
+    return str;
 }
 
 // Enhanced poll results processing with weighted voting
@@ -1370,195 +1344,211 @@ async function getUserXPLevel(userId, discordUsername) {
     }
 }
 
-// Function to get comprehensive user profile data
+const USER_XP_DATA_URL = 'https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data';
+
+function resolveDiscordInvite(metaData) {
+    if (!metaData || metaData._discord_invite == null) return null;
+    const inv = metaData._discord_invite;
+    if (Array.isArray(inv)) {
+        if (inv.length === 0) return null;
+        const first = inv[0];
+        if (typeof first === 'string') {
+            try {
+                return JSON.parse(first);
+            } catch {
+                return null;
+            }
+        }
+        return first;
+    }
+    return typeof inv === 'object' ? inv : null;
+}
+
+function mapApiUserToProfile(user, fallbackDiscordUsername) {
+    const metaData = user.meta_data || {};
+    const discordInvite = resolveDiscordInvite(metaData);
+    const discordUsername =
+        (discordInvite && discordInvite.discord_username) ||
+        fallbackDiscordUsername ||
+        user.user_login ||
+        'Unknown';
+    const fullName =
+        (discordInvite && discordInvite.discord_display_name) ||
+        user.display_name ||
+        discordUsername;
+
+    let membershipName = 'verified';
+    try {
+        if (metaData._buyer_details && Array.isArray(metaData._buyer_details) && metaData._buyer_details.length > 0) {
+            const raw = metaData._buyer_details[0];
+            const buyerDetail = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+            if (buyerDetail && buyerDetail.membership) {
+                membershipName = buyerDetail.membership;
+            }
+        }
+    } catch (_) {}
+
+    const buyerLegacy = legacyMetaArrayXpSum(metaData._buyer_details);
+    const sellerLegacy = legacyMetaArrayXpSum(metaData._seller_details);
+    const buyerScan = sumXpUnitsFromScanList(metaData.buyer_scan);
+    const sellerScan = sumXpUnitsFromScanList(metaData.seller_scan);
+    const personalScan = sumXpUnitsFromScanList(metaData.personal_scan);
+
+    const buyerDetails = sumBigIntDigitStrings(buyerLegacy, buyerScan);
+    const sellerDetails = sumBigIntDigitStrings(sellerLegacy, sellerScan);
+
+    let discordInviteXp = '0';
+    if (discordInvite && discordInvite.xp_awarded != null) {
+        discordInviteXp = normalizeDigitString(discordInvite.xp_awarded);
+    }
+
+    const talentXP = legacyMetaArrayXpSum(metaData._talentshow_entry);
+    let pollXP = '0';
+    if (metaData._discord_poll && Array.isArray(metaData._discord_poll)) {
+        pollXP = legacyMetaArrayXpSum(metaData._discord_poll, 'xp_awarded');
+    }
+
+    const totalXP = sumBigIntDigitStrings(
+        discordInviteXp,
+        buyerDetails,
+        sellerDetails,
+        talentXP,
+        pollXP,
+        personalScan
+    );
+
+    return {
+        success: true,
+        data: {
+            userId: user.user_id,
+            discordUsername,
+            fullName,
+            email: user.user_email,
+            membership: membershipName,
+            totalXP,
+            xpBreakdown: {
+                discordInvite: discordInviteXp,
+                buyerDetails,
+                talentShow: talentXP,
+                sellerDetails,
+                discordPoll: pollXP,
+                personalScan
+            },
+            metaData,
+            discordId: discordInvite ? discordInvite.discord_id : null,
+            joinDate: discordInvite ? discordInvite.joined_at : null,
+            verificationDate: discordInvite ? discordInvite.verification_date : null
+        }
+    };
+}
+
+function unverifiedProfileShell(ident) {
+    return {
+        success: true,
+        data: {
+            userId: null,
+            discordUsername: ident,
+            fullName: ident,
+            email: null,
+            membership: 'unverified',
+            totalXP: '0',
+            xpBreakdown: {
+                discordInvite: '0',
+                buyerDetails: '0',
+                talentShow: '0',
+                sellerDetails: '0',
+                discordPoll: '0',
+                personalScan: '0'
+            },
+            metaData: {},
+            discordId: null,
+            joinDate: null,
+            verificationDate: null
+        }
+    };
+}
+
+// Function to get comprehensive user profile data (supports legacy { users: [] } and single-user + ?email= / query variants)
 async function getUserProfileData(discordUsername) {
     try {
-        console.log(`🔍 Fetching profile data for user: ${discordUsername}`);
-        
-        // Call the user-xp-data API (which has the correct structure)
-        console.log(`🔑 Using hardcoded API key`);
-        
-        const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/user-xp-data', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-
-        if (!response.ok) {
-            console.error(`❌ API Error: ${response.status} - ${response.statusText}`);
-            // Return default profile for API errors
-            return {
-                success: true,
-                data: {
-                    userId: null,
-                    discordUsername: discordUsername,
-                    fullName: discordUsername
-                }
-            };
+        const apiKey = process.env.SMALLSTREET_API_KEY;
+        if (!apiKey) {
+            return { success: false, error: 'SMALLSTREET_API_KEY is not set' };
         }
 
-        const apiData = await response.json();
-        console.log(`📊 API Response for ${discordUsername}:`, apiData);
+        const ident = (discordUsername || '').trim();
+        if (!ident) {
+            return { success: false, error: 'Empty username' };
+        }
 
-        if (apiData && apiData.users && Array.isArray(apiData.users)) {
-            // Search through users to find matching Discord username
-            let foundUser = null;
-            
-            for (const user of apiData.users) {
-                try {
-                    const metaData = user.meta_data;
-                    if (metaData && metaData._discord_invite) {
-                        const discordInvite = metaData._discord_invite;
-                        if (discordInvite.discord_username && 
-                            discordInvite.discord_username.toLowerCase() === discordUsername.toLowerCase()) {
-                            foundUser = { user, metaData, discordInvite };
-                            console.log(`✅ Found user by Discord username: ${discordInvite.discord_username}`);
-                            break;
+        const headers = {
+            'Authorization': `Bearer ${apiKey}`,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        };
+
+        const urlsToTry = [];
+        if (ident.includes('@')) {
+            urlsToTry.push(`${USER_XP_DATA_URL}?email=${encodeURIComponent(ident)}`);
+        }
+        urlsToTry.push(`${USER_XP_DATA_URL}?discord_username=${encodeURIComponent(ident)}`);
+        urlsToTry.push(`${USER_XP_DATA_URL}?user_login=${encodeURIComponent(ident)}`);
+        urlsToTry.push(USER_XP_DATA_URL);
+
+        const seen = new Set();
+        for (const url of urlsToTry) {
+            if (seen.has(url)) continue;
+            seen.add(url);
+            try {
+                const response = await fetchWithRetry(url, { method: 'GET', headers });
+                const apiData = await response.json();
+                console.log(`📊 user-xp-data (${url.includes('?') ? 'filtered' : 'list'}) keys:`, apiData && typeof apiData === 'object' ? Object.keys(apiData) : typeof apiData);
+
+                if (apiData && Array.isArray(apiData.users)) {
+                    for (const user of apiData.users) {
+                        try {
+                            const meta = user.meta_data;
+                            const inv = meta && resolveDiscordInvite(meta);
+                            if (inv && inv.discord_username &&
+                                inv.discord_username.toLowerCase() === ident.toLowerCase()) {
+                                console.log(`✅ Found user in users[] by discord_username: ${inv.discord_username}`);
+                                return mapApiUserToProfile(user, ident);
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing user in users[] list:', parseError);
                         }
                     }
-                } catch (parseError) {
-                    console.error('Error parsing user data:', parseError);
                     continue;
                 }
-            }
-            
-            if (foundUser) {
-                const { user, metaData, discordInvite } = foundUser;
-                
-                // Try to get membership from buyer details if available
-                let membershipName = 'verified';
-                try {
-                    if (metaData._buyer_details && Array.isArray(metaData._buyer_details) && metaData._buyer_details.length > 0) {
-                        const buyerDetail = metaData._buyer_details[0];
-                        if (buyerDetail.membership) {
-                            membershipName = buyerDetail.membership;
-                        }
-                    }
-                } catch (error) {
-                    console.log('Could not parse buyer details:', error.message);
-                }
-                
-                // Calculate total XP by summing from all meta keys
-                let totalXP = 0;
-                let xpBreakdown = {
-                    discordInvite: 0,
-                    buyerDetails: 0,
-                    talentShow: 0,
-                    sellerDetails: 0,
-                    discordPoll: 0
-                };
-                
-                // 1. Discord Invite XP
-                if (metaData._discord_invite && metaData._discord_invite.xp_awarded) {
-                    const discordXP = metaData._discord_invite.xp_awarded;
-                    totalXP += discordXP;
-                    xpBreakdown.discordInvite = discordXP;
-                }
-                
-                // 2. Buyer Details XP
-                if (metaData._buyer_details && Array.isArray(metaData._buyer_details)) {
-                    const buyerXP = metaData._buyer_details.reduce((sum, detail) => {
-                        return sum + (detail.xp_awarded || 0);
-                    }, 0);
-                    totalXP += buyerXP;
-                    xpBreakdown.buyerDetails = buyerXP;
-                }
-                
-                // 3. Talent Show Entry XP
-                if (metaData._talentshow_entry && Array.isArray(metaData._talentshow_entry)) {
-                    const talentXP = metaData._talentshow_entry.reduce((sum, entry) => {
-                        return sum + (entry.xp_awarded || 0);
-                    }, 0);
-                    totalXP += talentXP;
-                    xpBreakdown.talentShow = talentXP;
-                }
-                
-                // 4. Seller Details XP
-                if (metaData._seller_details && Array.isArray(metaData._seller_details)) {
-                    const sellerXP = metaData._seller_details.reduce((sum, detail) => {
-                        return sum + (detail.xp_awarded || 0);
-                    }, 0);
-                    totalXP += sellerXP;
-                    xpBreakdown.sellerDetails = sellerXP;
-                }
-                
-                // 5. Discord Poll XP
-                if (metaData._discord_poll && Array.isArray(metaData._discord_poll)) {
-                    const pollXP = metaData._discord_poll.reduce((sum, poll) => {
-                        return sum + (poll.xp_awarded || 0);
-                    }, 0);
-                    totalXP += pollXP;
-                    xpBreakdown.discordPoll = pollXP;
-                }
 
-                return {
-                    success: true,
-                    data: {
-                        userId: user.user_id,
-                        discordUsername: discordInvite.discord_username,
-                        fullName: discordInvite.discord_display_name || user.display_name,
-                        email: user.user_email,
-                        membership: membershipName,
-                        totalXP: totalXP,
-                        xpBreakdown: xpBreakdown,
-                        metaData: metaData,
-                        discordId: discordInvite.discord_id,
-                        joinDate: discordInvite.joined_at,
-                        verificationDate: discordInvite.verification_date
-                    }
-                };
-            } else {
-                console.log(`❌ User ${discordUsername} not found in API data`);
-                // Return default profile for unverified users
-                return {
-                    success: true,
-                    data: {
-                        userId: null,
-                        discordUsername: discordUsername,
-                        fullName: discordUsername,
-                        email: null,
-                        membership: 'unverified',
-                        totalXP: 0,
-                        xpBreakdown: {
-                            discordInvite: 0,
-                            buyerDetails: 0,
-                            talentShow: 0,
-                            sellerDetails: 0,
-                            discordPoll: 0
-                        },
-                        discordId: null,
-                        joinDate: null,
-                        verificationDate: null
-                    }
-                };
-            }
-        } else {
-            console.log(`❌ Invalid API response format`);
-            // Return default profile for API errors
-            return {
-                success: true,
-                data: {
-                    userId: null,
-                    discordUsername: discordUsername,
-                    fullName: discordUsername,
-                    email: null,
-                    membership: 'unverified',
-                    totalXP: 0,
-                    xpBreakdown: {
-                        discordInvite: 0,
-                        buyerDetails: 0,
-                        talentShow: 0,
-                        sellerDetails: 0,
-                        discordPoll: 0
-                    },
-                    discordId: null,
-                    joinDate: null,
-                    verificationDate: null
+                if (apiData && apiData.user_id != null && apiData.meta_data) {
+                    console.log(`✅ Matched single-user user-xp-data (user_id ${apiData.user_id})`);
+                    return mapApiUserToProfile(apiData, ident);
                 }
-            };
+            } catch (err) {
+                console.log(`getUserProfileData attempt failed (${url}):`, err.message);
+            }
         }
+
+        // Fallback: map Discord username → email via discord-invites, then user-xp-data?email=
+        if (!ident.includes('@')) {
+            try {
+                const inviteLookup = await checkUserInDiscordInvites(ident);
+                if (inviteLookup.exists && inviteLookup.userData && inviteLookup.userData.email) {
+                    const emailUrl = `${USER_XP_DATA_URL}?email=${encodeURIComponent(inviteLookup.userData.email)}`;
+                    const response = await fetchWithRetry(emailUrl, { method: 'GET', headers });
+                    const apiData = await response.json();
+                    if (apiData && apiData.user_id != null && apiData.meta_data) {
+                        console.log(`✅ Matched user-xp-data via discord-invites email for @${ident}`);
+                        return mapApiUserToProfile(apiData, ident);
+                    }
+                }
+            } catch (err) {
+                console.log('getUserProfileData discord-invites fallback failed:', err.message);
+            }
+        }
+
+        console.log(`❌ User ${ident} not found via user-xp-data`);
+        return unverifiedProfileShell(ident);
     } catch (error) {
         console.error('Error getting user profile data:', error);
         return {
@@ -1710,7 +1700,7 @@ async function addXpEvent(userId, eventType, xp, meta = {}) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             body: JSON.stringify(xpAwardData)
@@ -2931,7 +2921,7 @@ client.on('messageCreate', async (message) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
                 body: JSON.stringify(testData)
@@ -3003,7 +2993,7 @@ client.on('messageCreate', async (message) => {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             });
@@ -3077,7 +3067,7 @@ client.on('messageCreate', async (message) => {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer G8wP3ZxR7kA1LqN9JdV2FhX5`,
+                    'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             });
@@ -3702,31 +3692,74 @@ client.on('messageCreate', async (message) => {
             const transactionRows = [];
             
             // Discord Invite Transaction
-            if (profile.xpBreakdown && profile.xpBreakdown.discordInvite > 0) {
+            if (profile.xpBreakdown && xpGreaterThanZero(profile.xpBreakdown.discordInvite)) {
                 transactionRows.push({
                     orderDetails: `Discord Join - @${profile.discordUsername} - ${profile.joinDate ? new Date(profile.joinDate).toLocaleString() : 'Unknown Date'}`,
                     xpAwarded: formatXPNumber(profile.xpBreakdown.discordInvite),
                     status: 'Released'
                 });
             }
-            
-            // Buyer Details Transaction
-            if (profile.xpBreakdown && profile.xpBreakdown.buyerDetails > 0) {
+
+            const meta = profile.metaData || {};
+            const buyerScans = Array.isArray(meta.buyer_scan) ? meta.buyer_scan : [];
+            const sellerScans = Array.isArray(meta.seller_scan) ? meta.seller_scan : [];
+            const personalScans = Array.isArray(meta.personal_scan) ? meta.personal_scan : [];
+
+            // Buyer: show per-scan rows when API returns buyer_scan; else legacy aggregate row
+            if (buyerScans.length > 0) {
+                buyerScans.forEach((scan, index) => {
+                    const xp = scan.xp_units;
+                    if (!xpGreaterThanZero(xp)) return;
+                    const when = scan.date || scan.timestamp || 'Unknown Date';
+                    const tid = scan.transaction_id || `buyer-${index + 1}`;
+                    const oid = scan.order_id != null ? ` order #${scan.order_id}` : '';
+                    transactionRows.push({
+                        orderDetails: `Buyer scan — ${tid}${oid} — ${when}`,
+                        xpAwarded: formatXPNumber(xp),
+                        status: scan.scan_status || 'Released'
+                    });
+                });
+            } else if (profile.xpBreakdown && xpGreaterThanZero(profile.xpBreakdown.buyerDetails)) {
                 transactionRows.push({
                     orderDetails: `Buyer Details - @${profile.discordUsername} - ${profile.verificationDate ? new Date(profile.verificationDate).toLocaleString() : 'Unknown Date'}`,
                     xpAwarded: formatXPNumber(profile.xpBreakdown.buyerDetails),
                     status: 'Released'
                 });
             }
-            
-            // Seller Details Transaction
-            if (profile.xpBreakdown && profile.xpBreakdown.sellerDetails > 0) {
+
+            // Seller: per-scan or aggregate
+            if (sellerScans.length > 0) {
+                sellerScans.forEach((scan, index) => {
+                    const xp = scan.xp_units;
+                    if (!xpGreaterThanZero(xp)) return;
+                    const when = scan.date || scan.timestamp || 'Unknown Date';
+                    const tid = scan.transaction_id || `seller-${index + 1}`;
+                    const oid = scan.order_id != null ? ` order #${scan.order_id}` : '';
+                    transactionRows.push({
+                        orderDetails: `Seller scan — ${tid}${oid} — ${when}`,
+                        xpAwarded: formatXPNumber(xp),
+                        status: scan.scan_status || 'Released'
+                    });
+                });
+            } else if (profile.xpBreakdown && xpGreaterThanZero(profile.xpBreakdown.sellerDetails)) {
                 transactionRows.push({
                     orderDetails: `Seller Details - @${profile.discordUsername} - ${profile.verificationDate ? new Date(profile.verificationDate).toLocaleString() : 'Unknown Date'}`,
                     xpAwarded: formatXPNumber(profile.xpBreakdown.sellerDetails),
                     status: 'Released'
                 });
             }
+
+            personalScans.forEach((scan, index) => {
+                const xp = scan.xp_units;
+                if (!xpGreaterThanZero(xp)) return;
+                const when = scan.date || scan.timestamp || 'Unknown Date';
+                const tid = scan.transaction_id || `personal-${index + 1}`;
+                transactionRows.push({
+                    orderDetails: `Personal scan — ${tid} — ${when}`,
+                    xpAwarded: formatXPNumber(xp),
+                    status: scan.scan_status || 'Released'
+                });
+            });
 
             // Add detailed Discord Poll breakdowns
             if (profile.metaData && profile.metaData._discord_poll && Array.isArray(profile.metaData._discord_poll)) {
