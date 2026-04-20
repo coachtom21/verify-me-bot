@@ -750,7 +750,18 @@ async function checkUserEmailExists(email) {
     }
 }
 
-// Modify the fetchQR1BeData function
+/** SmallStreet public vCard HTML (WordPress admin-ajax), same membership flow as qr1.be after email is scraped. */
+function isSmallstreetPublicVcardAjaxUrl(text) {
+    if (!text || typeof text !== 'string') return false;
+    const t = text.trim();
+    if (!/smallstreet\.app/i.test(t)) return false;
+    if (!/\/wp-admin\/admin-ajax\.php/i.test(t)) return false;
+    if (!/[?&]action=dong_public_vcard_card\b/i.test(t)) return false;
+    if (!/[?&]token=/i.test(t)) return false;
+    return true;
+}
+
+// Fetch vCard-like HTML (qr1.be or SmallStreet dong_public_vcard_card) and extract email
 async function fetchQR1BeData(url) {
     try {
         const response = await fetchWithRetry(url, {
@@ -769,13 +780,13 @@ async function fetchQR1BeData(url) {
         const phoneMatch = html.match(/(?:tel:|Phone:|phone:)[^\d]*(\d[\d\s-]{8,})/);
         if (phoneMatch) info.phone = phoneMatch[1].replace(/\D/g, '');
 
-        // Extract email
+        // Extract email (first match in HTML — works for qr1.be and typical vCard markup)
         const emailMatch = html.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
         if (emailMatch) info.email = emailMatch[1].trim();
 
         return info.email ? info : null;
     } catch (error) {
-        console.error('Error fetching qr1.be data:', error);
+        console.error('Error fetching vCard HTML:', error);
         throw new Error('Failed to fetch contact information after multiple retries');
     }
 }
@@ -806,8 +817,14 @@ function parseSmallstreetVerifyMeQr(text) {
 
     const transaction_id = u.searchParams.get('transaction_id');
     const xp_units = u.searchParams.get('xp_units') || '';
-    const idParam = u.searchParams.get('id');
-    const guildParam = u.searchParams.get('guild_id');
+    const idParam =
+        u.searchParams.get('id') ||
+        u.searchParams.get('discord_id') ||
+        u.searchParams.get('user_id');
+    const guildParam =
+        u.searchParams.get('guild_id') ||
+        u.searchParams.get('server_id') ||
+        u.searchParams.get('guild');
 
     if (transaction_id) {
         return { type: 'transaction', transaction_id, xp_units, originalUrl: trimmed };
@@ -819,6 +836,59 @@ function parseSmallstreetVerifyMeQr(text) {
             qr_guild_id: String(guildParam).trim(),
             originalUrl: trimmed
         };
+    }
+    return null;
+}
+
+/**
+ * Membership verification from QR: plain email without hitting qr1.be HTML.
+ * - mailto:user@domain.com
+ * - https://www.smallstreet.app/...?email=... (also user_email, mail, e)
+ * Does not run for structured verify-me QRs (handled by parseSmallstreetVerifyMeQr first).
+ */
+function extractEmailForMembershipFromQr(qrText) {
+    if (!qrText || typeof qrText !== 'string') return null;
+    const trimmed = String(qrText).replace(/^\uFEFF/, '').trim();
+
+    if (/^mailto:/i.test(trimmed)) {
+        let addr = trimmed.replace(/^mailto:/i, '').split('?')[0].trim();
+        try {
+            addr = decodeURIComponent(addr);
+        } catch (_) {}
+        if (addr && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+            return { email: addr.trim() };
+        }
+        return null;
+    }
+
+    if (!/smallstreet\.app/i.test(trimmed)) return null;
+
+    let u;
+    try {
+        u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    } catch {
+        return null;
+    }
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host !== 'smallstreet.app') return null;
+
+    const candidates = [
+        u.searchParams.get('email'),
+        u.searchParams.get('user_email'),
+        u.searchParams.get('mail'),
+        u.searchParams.get('e')
+    ].filter(Boolean);
+
+    for (const raw of candidates) {
+        let e;
+        try {
+            e = decodeURIComponent(raw).trim();
+        } catch {
+            e = raw.trim();
+        }
+        if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+            return { email: e };
+        }
     }
     return null;
 }
@@ -4421,7 +4491,10 @@ client.on('messageCreate', async (message) => {
                 return;
             }
 
-            const verifyMeParsed = parseSmallstreetVerifyMeQr(qrData);
+            const qrPayload = String(qrData).replace(/^\uFEFF/, '').trim();
+            console.log(`📷 QR decoded length=${qrPayload.length}, preview=${qrPayload.slice(0, 120)}${qrPayload.length > 120 ? '…' : ''}`);
+
+            const verifyMeParsed = parseSmallstreetVerifyMeQr(qrPayload);
             if (verifyMeParsed) {
                 if (verifyMeParsed.type === 'session') {
                     if (String(message.author.id) !== verifyMeParsed.qr_discord_id) {
@@ -4500,17 +4573,24 @@ client.on('messageCreate', async (message) => {
                 return;
             }
 
-            // Membership flow: qr1.be vCard QR only
-            if (!qrData.includes('qr1.be')) {
+            // Membership flow: email from SmallStreet link (?email=), mailto:, or qr1.be vCard page
+            let contactInfo = extractEmailForMembershipFromQr(qrPayload);
+            if (contactInfo) {
+                await processingMsg.edit(`🔍 **Membership QR**\nUsing email from link: \`${contactInfo.email}\``);
+            } else if (qrPayload.includes('qr1.be') || isSmallstreetPublicVcardAjaxUrl(qrPayload)) {
                 await processingMsg.edit(
-                    `❌ **Unrecognized QR**\nUse a **SmallStreet verify-me** link (\`/verify-me/?transaction_id=…\`, \`/wp-json/myapi/v1/verify-me?id=…&guild_id=…\`) or a **qr1.be** membership vCard QR.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`
+                    isSmallstreetPublicVcardAjaxUrl(qrPayload)
+                        ? `🔍 Loading SmallStreet vCard…`
+                        : `🔍 Reading contact information from qr1.be…`
+                );
+                contactInfo = await fetchQR1BeData(qrPayload);
+            } else {
+                await processingMsg.edit(
+                    `❌ **Unrecognized QR**\nThe image decoded, but the text was not a supported link.\n\n**Supported:**\n• SmallStreet vCard: \`…/wp-admin/admin-ajax.php?action=dong_public_vcard_card&token=…\`\n• \`https://www.smallstreet.app/...?email=you@example.com\` (or \`user_email=\`, \`mail=\`)\n• \`mailto:you@example.com\`\n• \`https://www.smallstreet.app/verify-me/?transaction_id=…\` (optional \`xp_units\`)\n• \`/wp-json/myapi/v1/verify-me?id=<Discord user id>&guild_id=<server id>\`\n• \`https://…qr1.be/…\` membership vCard\n\nCheck logs for \`📷 QR decoded\` to see the exact string.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`
                 );
                 return;
             }
 
-            // Now we know we have a valid QR code, proceed with API calls
-            await processingMsg.edit(`🔍 Reading contact information...`);
-            const contactInfo = await fetchQR1BeData(qrData);
             if (!contactInfo || !contactInfo.email) {
                 await processingMsg.edit(`❌ Could not read contact information.\nPlease try again.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
                 return;
