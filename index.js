@@ -454,6 +454,20 @@ function generateRandomId() {
     return `${timestamp}-${randomStr}`.toUpperCase();
 }
 
+// SmallStreet discord-invite POST expects joined_at like "2026-04-20 15:30:00" (UTC)
+function formatJoinedAtForApi(isoOrDate) {
+    const d = isoOrDate ? new Date(isoOrDate) : new Date();
+    if (Number.isNaN(d.getTime())) {
+        const fallback = new Date();
+        const p = (n) => String(n).padStart(2, '0');
+        return `${fallback.getUTCFullYear()}-${p(fallback.getUTCMonth() + 1)}-${p(fallback.getUTCDate())} ${p(fallback.getUTCHours())}:${p(fallback.getUTCMinutes())}:${p(fallback.getUTCSeconds())}`;
+    }
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+const DISCORD_INVITE_POST_URL = 'https://www.smallstreet.app/wp-json/myapi/v1/discord-invite';
+
 // Function to insert user data into SmallStreet database
 async function insertUserToSmallStreetDatabase(userData) {
     try {
@@ -766,6 +780,104 @@ async function fetchQR1BeData(url) {
     }
 }
 
+// SmallStreet verify-me QR:
+// - Page link: /verify-me/?transaction_id=...&xp_units=...
+// - REST link: /wp-json/myapi/v1/verify-me?id=<discord_id>&guild_id=<guild_id>
+// Override POST URL with VERIFY_ME_QR_SUBMIT_URL.
+const VERIFY_ME_QR_SUBMIT_DEFAULT = 'https://www.smallstreet.app/wp-json/myapi/v1/verify-me';
+
+function parseSmallstreetVerifyMeQr(text) {
+    if (!text || typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    if (!/smallstreet\.app/i.test(trimmed)) return null;
+    let u;
+    try {
+        u = new URL(trimmed);
+    } catch {
+        try {
+            u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+        } catch {
+            return null;
+        }
+    }
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host !== 'smallstreet.app') return null;
+    if (!/verify-me/i.test(u.pathname)) return null;
+
+    const transaction_id = u.searchParams.get('transaction_id');
+    const xp_units = u.searchParams.get('xp_units') || '';
+    const idParam = u.searchParams.get('id');
+    const guildParam = u.searchParams.get('guild_id');
+
+    if (transaction_id) {
+        return { type: 'transaction', transaction_id, xp_units, originalUrl: trimmed };
+    }
+    if (idParam && guildParam) {
+        return {
+            type: 'session',
+            qr_discord_id: String(idParam).trim(),
+            qr_guild_id: String(guildParam).trim(),
+            originalUrl: trimmed
+        };
+    }
+    return null;
+}
+
+async function submitSmallstreetVerifyMeFromDiscord(message, parsed) {
+    const apiKey = process.env.SMALLSTREET_API_KEY;
+    if (!apiKey) {
+        return { outcome: 'missing_key' };
+    }
+    const url = process.env.VERIFY_ME_QR_SUBMIT_URL || VERIFY_ME_QR_SUBMIT_DEFAULT;
+    const displayName = message.member
+        ? message.member.displayName || message.author.username
+        : message.author.username;
+    const body = {
+        transaction_id: parsed.type === 'transaction' ? parsed.transaction_id : null,
+        xp_units: parsed.type === 'transaction' ? (parsed.xp_units || null) : null,
+        discord_id: String(message.author.id),
+        discord_username: message.author.username,
+        discord_display_name: displayName,
+        message_id: String(message.id),
+        scanned_at_utc: formatJoinedAtForApi(new Date().toISOString()),
+        qr_type: parsed.type
+    };
+    if (parsed.type === 'session') {
+        body.id = parsed.qr_discord_id;
+        body.guild_id = parsed.qr_guild_id;
+        body.scanned_in_guild_id = String(message.guild.id);
+    } else {
+        body.guild_id = String(message.guild.id);
+    }
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            body: JSON.stringify(body)
+        });
+        const text = await res.text();
+        let data = null;
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch {
+                data = { message: text.slice(0, 500) };
+            }
+        }
+        if (res.ok) {
+            return { outcome: 'synced', status: res.status, data };
+        }
+        const errMsg = (data && (data.message || data.error)) || (typeof text === 'string' ? text.slice(0, 200) : '');
+        return { outcome: 'http_error', status: res.status, data, error: errMsg };
+    } catch (err) {
+        return { outcome: 'network_error', error: err.message };
+    }
+}
+
 // Modify the verifySmallStreetMembership function to add debugging
 async function verifySmallStreetMembership(email) {
     try {
@@ -792,47 +904,39 @@ async function verifySmallStreetMembership(email) {
     }
 }
 
-// Function to send Discord user data to SmallStreet API
+// POST Discord invite / join payload to SmallStreet (myapi/v1/discord-invite)
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 Sending Discord user data to SmallStreet API: ${userData.discordUsername}`);
+        console.log(`🔗 Sending discord-invite payload for: ${userData.discordUsername}`);
         console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
         console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
-        
-        // Generate random ID for this verification
-        const randomId = generateRandomId();
-        console.log(`🆔 Generated random ID: ${randomId}`);
-        
-        // Prepare data in the correct format for the API
+
+        const eventId = userData.eventId ? String(userData.eventId) : generateRandomId();
+        const xpAwarded = userData.xpAwarded != null ? Number(userData.xpAwarded) : 5000000;
+
+        // Payload matches SmallStreet discord-invite API contract
         const apiData = {
-            id: randomId,
-            discord_id: userData.discordId,
+            email: userData.email,
+            discord_id: String(userData.discordId),
+            id: eventId,
             discord_username: userData.discordUsername,
             discord_display_name: userData.displayName,
-            email: userData.email,
-            joined_at: userData.joinedAt.replace('T', ' ').replace('Z', ''),
-            guild_id: userData.guildId,
+            joined_at: formatJoinedAtForApi(userData.joinedAt),
+            guild_id: String(userData.guildId),
             joined_via_invite: userData.inviteUrl,
-            xp_awarded: 5000000
+            xp_awarded: xpAwarded
         };
-        
-        console.log(`📝 Sending data to API:`, JSON.stringify(apiData, null, 2));
-        console.log(`🆔 ID field included in request: ${apiData.id}`);
-        
-        // Send data to the custom API endpoint
+
+        console.log(`📝 discord-invite body:`, JSON.stringify(apiData, null, 2));
+
         try {
-            console.log(`📝 Sending data to: https://www.smallstreet.app/wp-json/myapi/v1/discord-user`);
-            console.log(`🔑 API Key configured:`, !!process.env.SMALLSTREET_API_KEY);
-            
             const requestHeaders = {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`
+                'Authorization': `Bearer ${process.env.SMALLSTREET_API_KEY}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             };
-            
-            console.log(`📤 Request Body:`, JSON.stringify(apiData, null, 2));
-            console.log(`🆔 Verifying ID in request body: ${apiData.id}`);
-            
-            const apiResponse = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/discord-user', {
+
+            const apiResponse = await fetchWithRetry(DISCORD_INVITE_POST_URL, {
                 method: 'POST',
                 headers: requestHeaders,
                 body: JSON.stringify(apiData)
@@ -4317,9 +4421,90 @@ client.on('messageCreate', async (message) => {
                 return;
             }
 
-            // Verify it's a qr1.be URL before proceeding with API calls
+            const verifyMeParsed = parseSmallstreetVerifyMeQr(qrData);
+            if (verifyMeParsed) {
+                if (verifyMeParsed.type === 'session') {
+                    if (String(message.author.id) !== verifyMeParsed.qr_discord_id) {
+                        await processingMsg.edit(
+                            `❌ **Wrong Discord account**\nThis QR is for user ID \`${verifyMeParsed.qr_discord_id}\`. You must scan it while logged in as that user.\nMake Everyone Great Again`
+                        );
+                        return;
+                    }
+                    if (message.guild && String(message.guild.id) !== verifyMeParsed.qr_guild_id) {
+                        await processingMsg.edit(
+                            `❌ **Wrong server**\nThis QR is for guild ID \`${verifyMeParsed.qr_guild_id}\`. Open the verify channel in that Discord server.\nMake Everyone Great Again`
+                        );
+                        return;
+                    }
+                }
+
+                const xpLine =
+                    verifyMeParsed.type === 'transaction' && verifyMeParsed.xp_units
+                        ? `\n**XP (from QR):** ${formatXPNumber(verifyMeParsed.xp_units)}`
+                        : '';
+                const headerLine =
+                    verifyMeParsed.type === 'transaction'
+                        ? `**Transaction:** \`${verifyMeParsed.transaction_id}\`${xpLine}`
+                        : `**Session verify** (Discord \`${verifyMeParsed.qr_discord_id}\`, guild \`${verifyMeParsed.qr_guild_id}\`)`;
+
+                await processingMsg.edit(`🔍 **SmallStreet verify-me QR**\n${headerLine}\nSubmitting to SmallStreet...`);
+
+                const sub = await submitSmallstreetVerifyMeFromDiscord(message, verifyMeParsed);
+
+                if (sub.outcome === 'missing_key') {
+                    await processingMsg.edit(
+                        `✅ **Recognized verify-me QR**\n${headerLine}\n\n⚠️ \`SMALLSTREET_API_KEY\` is not set on the bot, so nothing was sent to the API.\n🔗 ${verifyMeParsed.originalUrl}\nMake Everyone Great Again`
+                    );
+                    return;
+                }
+
+                if (sub.outcome === 'synced') {
+                    const okLine =
+                        verifyMeParsed.type === 'transaction'
+                            ? `**Transaction:** \`${verifyMeParsed.transaction_id}\`${xpLine}`
+                            : `**Session** confirmed for guild \`${verifyMeParsed.qr_guild_id}\`.`;
+                    await processingMsg.edit(`✅ **Verify-me recorded**\n${okLine}\nMake Everyone Great Again`);
+                    try {
+                        await message.author.send(
+                            verifyMeParsed.type === 'transaction'
+                                ? `✅ **Verify-me**\nTransaction \`${verifyMeParsed.transaction_id}\` was submitted from Discord.`
+                                : `✅ **Verify-me**\nYour session was submitted from Discord.`
+                        );
+                    } catch (_) {}
+                    try {
+                        const adminUser = client.users.cache.get(process.env.ADMIN_USER_ID);
+                        if (adminUser) {
+                            const adminDetail =
+                                verifyMeParsed.type === 'transaction'
+                                    ? `Transaction: \`${verifyMeParsed.transaction_id}\``
+                                    : `Session QR (guild \`${verifyMeParsed.qr_guild_id}\`)`;
+                            await adminUser.send(
+                                `✅ **verify-me QR**\nUser: ${message.author.tag} (\`${message.author.id}\`)\n${adminDetail}`
+                            );
+                        }
+                    } catch (_) {}
+                    return;
+                }
+
+                if (sub.outcome === 'http_error' && sub.status === 404) {
+                    await processingMsg.edit(
+                        `✅ **Recognized verify-me QR**\n${headerLine}\n\nThe REST confirm endpoint returned **404**. Use the link below on the site, or set **VERIFY_ME_QR_SUBMIT_URL** to your working route.\n🔗 ${verifyMeParsed.originalUrl}\nMake Everyone Great Again`
+                    );
+                    return;
+                }
+
+                const detail = sub.error || sub.outcome || 'Unknown error';
+                await processingMsg.edit(
+                    `❌ **Verify-me QR** — could not confirm with SmallStreet (${sub.status || '—'}).\n${detail}\n\n🔗 ${verifyMeParsed.originalUrl}\nMake Everyone Great Again`
+                );
+                return;
+            }
+
+            // Membership flow: qr1.be vCard QR only
             if (!qrData.includes('qr1.be')) {
-                await processingMsg.edit(`❌ Invalid QR code.\nMust be from qr1.be\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+                await processingMsg.edit(
+                    `❌ **Unrecognized QR**\nUse a **SmallStreet verify-me** link (\`/verify-me/?transaction_id=…\`, \`/wp-json/myapi/v1/verify-me?id=…&guild_id=…\`) or a **qr1.be** membership vCard QR.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`
+                );
                 return;
             }
 
@@ -4364,7 +4549,9 @@ client.on('messageCreate', async (message) => {
                 email: contactInfo.email, // Use the email from QR code
                 guildId: message.guild.id,
                 joinedAt: message.member.joinedAt ? message.member.joinedAt.toISOString() : new Date().toISOString(),
-                inviteUrl: 'https://discord.gg/smallstreet'
+                inviteUrl: 'https://discord.gg/smallstreet',
+                eventId: String(message.id),
+                xpAwarded: 5000000
             };
 
             console.log(`📊 QR Verification - Attempting to insert user data:`, JSON.stringify(userData, null, 2));
