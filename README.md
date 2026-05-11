@@ -84,6 +84,22 @@ View detailed transaction history and meta data:
 - **Admin-only**: Can view any user's transaction data by mentioning them
 - **User restriction**: Regular users can only view their own transaction data
 
+## HumanBlockchain (optional)
+
+If you run membership + XP on a **HumanBlockchain** WordPress site instead of SmallStreet, set:
+
+- `HUMANBLOCKCHAIN_SITE_URL` — Site origin with no trailing slash (example: `https://yoursite.com` or `http://humanblockchain.local`)
+- `HUMANBLOCKCHAIN_API_KEY` — **Same secret** as WordPress: `HB_DISCORD_BOT_API_KEY` in `wp-config.php`, or the `hb_discord_bot_api_key` option
+
+When both are set, the bot calls:
+
+- `GET /wp-json/hb/v1/discord-bot/membership?email=…`
+- `POST /wp-json/hb/v1/discord-bot/verification` (same JSON body as the legacy SmallStreet `discord-user` route)
+
+Optional: `HUMANBLOCKCHAIN_QR_EMAIL_HOSTS` — comma-separated extra hostnames allowed for `?email=` links on QR images (the hostname from `HUMANBLOCKCHAIN_SITE_URL` is included automatically).
+
+If these variables are **not** set, behaviour stays on **smallstreet.app** (unchanged).
+
 ## Environment Variables
 
 - `DISCORD_TOKEN`: Your Discord bot token
