@@ -6,6 +6,47 @@ const QrCode = require('qrcode-reader');
 const express = require('express');
 const cron = require('node-cron');
 
+/**
+ * HumanBlockchain: when HUMANBLOCKCHAIN_SITE_URL and HUMANBLOCKCHAIN_API_KEY are set,
+ * QR membership checks and verification POST use this site instead of smallstreet.app.
+ */
+function useHumanBlockchainMembership() {
+    const base = String(process.env.HUMANBLOCKCHAIN_SITE_URL || '').trim();
+    const key = String(process.env.HUMANBLOCKCHAIN_API_KEY || '').trim();
+    return Boolean(base && key);
+}
+
+function humanBlockchainSiteBase() {
+    return String(process.env.HUMANBLOCKCHAIN_SITE_URL || '').replace(/\/+$/, '');
+}
+
+function membershipQrEmailHostAllowed(hostname) {
+    const h = String(hostname || '').replace(/^www\./i, '').toLowerCase();
+    if (h === 'smallstreet.app') {
+        return true;
+    }
+    const extra = String(process.env.HUMANBLOCKCHAIN_QR_EMAIL_HOSTS || '')
+        .split(',')
+        .map((s) => String(s).trim().replace(/^www\./i, '').toLowerCase())
+        .filter(Boolean);
+    if (extra.includes(h)) {
+        return true;
+    }
+    try {
+        const base = humanBlockchainSiteBase();
+        if (base) {
+            const u = new URL(base.startsWith('http') ? base : `https://${base}`);
+            const uh = String(u.hostname || '').replace(/^www\./i, '').toLowerCase();
+            if (uh && h === uh) {
+                return true;
+            }
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    return false;
+}
+
 // Create Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -760,11 +801,17 @@ async function checkUserEmailExists(email) {
     }
 }
 
-/** SmallStreet public vCard HTML (WordPress admin-ajax), same membership flow as qr1.be after email is scraped. */
-function isSmallstreetPublicVcardAjaxUrl(text) {
+/** Public vCard HTML (WordPress admin-ajax dong_public_vcard_card), same flow as qr1.be after email is scraped. */
+function isPublicVcardAjaxUrl(text) {
     if (!text || typeof text !== 'string') return false;
     const t = text.trim();
-    if (!/smallstreet\.app/i.test(t)) return false;
+    let host = '';
+    try {
+        host = new URL(/^https?:\/\//i.test(t) ? t : `https://${t}`).hostname;
+    } catch {
+        return false;
+    }
+    if (!membershipQrEmailHostAllowed(host)) return false;
     if (!/\/wp-admin\/admin-ajax\.php/i.test(t)) return false;
     if (!/[?&]action=dong_public_vcard_card\b/i.test(t)) return false;
     if (!/[?&]token=/i.test(t)) return false;
@@ -871,8 +918,6 @@ function extractEmailForMembershipFromQr(qrText) {
         return null;
     }
 
-    if (!/smallstreet\.app/i.test(trimmed)) return null;
-
     let u;
     try {
         u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
@@ -880,7 +925,7 @@ function extractEmailForMembershipFromQr(qrText) {
         return null;
     }
     const host = u.hostname.replace(/^www\./i, '').toLowerCase();
-    if (host !== 'smallstreet.app') return null;
+    if (!membershipQrEmailHostAllowed(host)) return null;
 
     const candidates = [
         u.searchParams.get('email'),
@@ -962,6 +1007,28 @@ async function submitSmallstreetVerifyMeFromDiscord(message, parsed) {
 async function verifySmallStreetMembership(email) {
     try {
         console.log(`🔍 Verifying membership for email: ${email}`);
+        if (useHumanBlockchainMembership()) {
+            const url = `${humanBlockchainSiteBase()}/wp-json/hb/v1/discord-bot/membership?email=${encodeURIComponent(email)}`;
+            const response = await fetchWithRetry(url, {
+                headers: {
+                    Authorization: `Bearer ${process.env.HUMANBLOCKCHAIN_API_KEY}`,
+                    Accept: 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                console.error('HumanBlockchain membership API error:', response.status, data);
+                throw new Error(data.message || data.code || 'HumanBlockchain membership API failed');
+            }
+            if (data.member && data.membership_name) {
+                console.log(`✅ HB API: member=${data.membership_name}`);
+                return [true, data.membership_name];
+            }
+            console.log(`❌ HB API: not a member for email: ${email}`);
+            return [false, null];
+        }
+
         const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/api');
         const data = await response.json();
         
@@ -987,10 +1054,6 @@ async function verifySmallStreetMembership(email) {
 // POST /myapi/v1/discord-user to persist QR verification (see getDiscordVerifyPostUrl).
 async function insertUserToSmallStreetUsermeta(userData) {
     try {
-        console.log(`🔗 POST discord-user for: ${userData.discordUsername}`);
-        console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
-        console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
-
         const eventId = userData.eventId ? String(userData.eventId) : generateRandomId();
         const xpAwarded = userData.xpAwarded != null ? Number(userData.xpAwarded) : 5000000;
 
@@ -1005,6 +1068,41 @@ async function insertUserToSmallStreetUsermeta(userData) {
             joined_via_invite: userData.inviteUrl,
             xp_awarded: xpAwarded
         };
+
+        if (useHumanBlockchainMembership()) {
+            console.log(`🔗 POST HumanBlockchain discord-bot/verification for: ${userData.discordUsername}`);
+            console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
+            console.log(`🔑 HUMANBLOCKCHAIN_API_KEY present:`, !!process.env.HUMANBLOCKCHAIN_API_KEY);
+            console.log(`📝 verification body:`, JSON.stringify(apiData, null, 2));
+            const postUrl = `${humanBlockchainSiteBase()}/wp-json/hb/v1/discord-bot/verification`;
+            try {
+                const apiResponse = await fetchWithRetry(postUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${process.env.HUMANBLOCKCHAIN_API_KEY}`,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    body: JSON.stringify(apiData)
+                });
+                const apiResult = await apiResponse.json();
+                console.log(`📥 HB API Status: ${apiResponse.status} ${apiResponse.statusText}`);
+                console.log(`📥 HB API Body:`, JSON.stringify(apiResult, null, 2));
+                if (apiResponse.ok) {
+                    console.log(`✅ HumanBlockchain verification saved`);
+                    return { success: true, data: apiResult };
+                }
+                console.error(`❌ HB verification failed:`, apiResult);
+                return { success: false, error: `API request failed: ${JSON.stringify(apiResult)}` };
+            } catch (apiError) {
+                console.error('❌ Error posting to HumanBlockchain:', apiError);
+                return { success: false, error: `API error: ${apiError.message}`, details: apiError };
+            }
+        }
+
+        console.log(`🔗 POST discord-user for: ${userData.discordUsername}`);
+        console.log(`📤 User data:`, JSON.stringify(userData, null, 2));
+        console.log(`🔑 API Key present:`, !!process.env.SMALLSTREET_API_KEY);
 
         console.log(`📝 discord-user body:`, JSON.stringify(apiData, null, 2));
 
@@ -4589,9 +4687,9 @@ client.on('messageCreate', async (message) => {
             let contactInfo = extractEmailForMembershipFromQr(qrPayload);
             if (contactInfo) {
                 await processingMsg.edit(`🔍 **Membership QR**\nUsing email from link: \`${contactInfo.email}\``);
-            } else if (qrPayload.includes('qr1.be') || isSmallstreetPublicVcardAjaxUrl(qrPayload)) {
+            } else if (qrPayload.includes('qr1.be') || isPublicVcardAjaxUrl(qrPayload)) {
                 await processingMsg.edit(
-                    isSmallstreetPublicVcardAjaxUrl(qrPayload)
+                    isPublicVcardAjaxUrl(qrPayload)
                         ? `🔍 Loading SmallStreet vCard…`
                         : `🔍 Reading contact information from qr1.be…`
                 );
