@@ -1822,8 +1822,148 @@ function unverifiedProfileShell(ident) {
     };
 }
 
+/**
+ * Map HumanBlockchain GET /discord-bot/wallet JSON to the shape used by !profile / !transaction.
+ *
+ * @param {object} json Parsed wallet response (found === true).
+ * @param {string} ident Discord username used in the command (fallback label).
+ * @returns {{ success: true, data: object }}
+ */
+function mapHbWalletJsonToProfile(json, ident) {
+    if (!json || json.found !== true) {
+        return unverifiedProfileShell(ident);
+    }
+    const rows = Array.isArray(json.ledger_rows) ? json.ledger_rows : [];
+    const buyer_scan = [];
+    const seller_scan = [];
+    const personal_scan = [];
+    for (const row of rows) {
+        const st = String(row.scan_type || '');
+        const o = {
+            xp_units: row.xp_units != null ? String(row.xp_units) : '0',
+            date: row.ledger_date || row.date || '',
+            transaction_id: row.transaction_id || '',
+            scan_status: row.scan_status || '',
+            order_id: row.order_id,
+            scan_type: st
+        };
+        if (st === 'buyer_scan') {
+            buyer_scan.push(o);
+        } else if (st === 'seller_scan') {
+            seller_scan.push(o);
+        } else {
+            personal_scan.push(o);
+        }
+    }
+    const disc = json.discord || {};
+    const metaData = { buyer_scan, seller_scan, personal_scan };
+
+    const buyerDetails = sumXpUnitsFromScanList(buyer_scan);
+    const sellerDetails = sumXpUnitsFromScanList(seller_scan);
+    const personalScan = sumXpUnitsFromScanList(personal_scan);
+    const discordInviteXp = '0';
+    const talentXP = '0';
+    const pollXP = '0';
+
+    let totalXP;
+    if (json.total_xp != null && String(json.total_xp).trim() !== '') {
+        totalXP = normalizeDigitString(String(json.total_xp).replace(/\D/g, ''));
+    } else {
+        totalXP = sumBigIntDigitStrings(discordInviteXp, buyerDetails, sellerDetails, talentXP, pollXP, personalScan);
+    }
+
+    const fnIdent = (ident || '').trim() || disc.discord_username || 'user';
+
+    return {
+        success: true,
+        data: {
+            userId: json.user_id,
+            discordUsername: disc.discord_username || fnIdent,
+            fullName: disc.discord_display_name || json.display_name || fnIdent,
+            email: json.user_email || null,
+            membership: json.membership_name || 'verified',
+            totalXP,
+            xpBreakdown: {
+                discordInvite: discordInviteXp,
+                buyerDetails,
+                talentShow: talentXP,
+                sellerDetails,
+                discordPoll: pollXP,
+                personalScan
+            },
+            metaData,
+            discordId: disc.discord_id || null,
+            joinDate: disc.joined_at || null,
+            verificationDate: disc.verified_at || null
+        }
+    };
+}
+
+/**
+ * Wallet + ledger for Discord commands when HumanBlockchain env is set.
+ *
+ * @param {string} discordUsername Discord handle (may differ from stored meta if user renamed).
+ * @param {string|null} discordUserId Discord snowflake when known (preferred lookup).
+ */
+async function fetchHbWalletProfile(discordUsername, discordUserId = null) {
+    const base = humanBlockchainSiteBase();
+    const key = String(process.env.HUMANBLOCKCHAIN_API_KEY || '').trim();
+    if (!base || !key) {
+        return { success: false, error: 'HUMANBLOCKCHAIN_SITE_URL or HUMANBLOCKCHAIN_API_KEY is not set' };
+    }
+    const ident = (discordUsername || '').trim();
+    const headers = {
+        Authorization: `Bearer ${key}`,
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+    const seen = new Set();
+    const urls = [];
+    if (discordUserId) {
+        urls.push(`${base}/wp-json/hb/v1/discord-bot/wallet?discord_id=${encodeURIComponent(String(discordUserId))}`);
+    }
+    if (ident) {
+        urls.push(`${base}/wp-json/hb/v1/discord-bot/wallet?discord_username=${encodeURIComponent(ident)}`);
+    }
+    for (const url of urls) {
+        if (seen.has(url)) {
+            continue;
+        }
+        seen.add(url);
+        try {
+            const response = await fetchWithRetry(url, { method: 'GET', headers });
+            const rawText = await response.text();
+            let data = {};
+            try {
+                data = rawText ? JSON.parse(rawText) : {};
+            } catch (e) {
+                console.error('HB wallet API: non-JSON body', rawText.slice(0, 400));
+                continue;
+            }
+            if (!response.ok) {
+                console.log(`HB wallet API HTTP ${response.status}`, data);
+                continue;
+            }
+            if (data && data.found === true) {
+                return mapHbWalletJsonToProfile(data, ident);
+            }
+        } catch (err) {
+            console.log(`HB wallet fetch failed (${url}):`, err.message);
+        }
+    }
+    return unverifiedProfileShell(ident || 'unknown');
+}
+
 // Function to get comprehensive user profile data (supports legacy { users: [] } and single-user + ?email= / query variants)
-async function getUserProfileData(discordUsername) {
+async function getUserProfileData(discordUsername, discordUserId = null) {
+    if (useHumanBlockchainMembership()) {
+        try {
+            return await fetchHbWalletProfile(discordUsername, discordUserId);
+        } catch (error) {
+            console.error('HB wallet profile error:', error);
+            return { success: false, error: error.message };
+        }
+    }
     try {
         const apiKey = process.env.SMALLSTREET_API_KEY;
         if (!apiKey) {
@@ -3826,7 +3966,7 @@ client.on('messageCreate', async (message) => {
 
             // Try to get user profile data from API
             console.log(`📡 Calling getUserProfileData for: "${actualUsername}"`);
-            const profileResult = await getUserProfileData(actualUsername);
+            const profileResult = await getUserProfileData(actualUsername, discordUser ? discordUser.id : null);
             console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
@@ -3871,7 +4011,7 @@ client.on('messageCreate', async (message) => {
                     }
                 ],
                 footer: {
-                    text: `SmallStreet Profile • Discord ID: ${profile.discordId || 'N/A'}`
+                    text: `${useHumanBlockchainMembership() ? 'HumanBlockchain' : 'SmallStreet'} Profile • Discord ID: ${profile.discordId || 'N/A'}`
                 },
                 timestamp: new Date().toISOString()
             };
@@ -4013,7 +4153,7 @@ client.on('messageCreate', async (message) => {
 
             // Try to get user transaction data from API
             console.log(`📡 Calling getUserProfileData for transaction data: "${actualUsername}"`);
-            const profileResult = await getUserProfileData(actualUsername);
+            const profileResult = await getUserProfileData(actualUsername, discordUser ? discordUser.id : null);
             console.log(`📊 Profile result:`, profileResult);
             
             if (!profileResult.success) {
@@ -4032,7 +4172,7 @@ client.on('messageCreate', async (message) => {
                 } : undefined,
                 fields: [],
                 footer: {
-                    text: `SmallStreet Transaction Data • Discord ID: ${profile.discordId || 'N/A'}`
+                    text: `${useHumanBlockchainMembership() ? 'HumanBlockchain' : 'SmallStreet'} wallet • Discord ID: ${profile.discordId || 'N/A'}`
                 },
                 timestamp: new Date().toISOString()
             };
@@ -4110,8 +4250,9 @@ client.on('messageCreate', async (message) => {
                 if (!xpGreaterThanZero(xp)) return;
                 const when = scan.date || scan.timestamp || 'Unknown Date';
                 const tid = scan.transaction_id || `personal-${index + 1}`;
+                const kind = scan.scan_type === 'discord_verify' ? 'Discord verify' : 'Personal scan';
                 transactionRows.push({
-                    orderDetails: `Personal scan — ${tid} — ${when}`,
+                    orderDetails: `${kind} — ${tid} — ${when}`,
                     xpAwarded: formatXPNumber(xp),
                     status: scan.scan_status || 'Released'
                 });
