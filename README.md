@@ -94,6 +94,7 @@ If you run membership + XP on a **HumanBlockchain** WordPress site instead of Sm
 When both are set, the bot calls:
 
 - `GET /wp-json/hb/v1/discord-bot/membership?email=…`
+- `GET /wp-json/hb/v1/discord-bot/wallet?discord_id=…` (preferred) or `?discord_username=…` — used by `!profile` / `!transaction` / `!transactions` in the wallet channel
 - `POST /wp-json/hb/v1/discord-bot/verification` (same JSON body as the legacy SmallStreet `discord-user` route)
 
 Optional: `HUMANBLOCKCHAIN_QR_EMAIL_HOSTS` — comma-separated extra hostnames for `?email=` on QR links. When HumanBlockchain mode is on, **`qr1.be`**, **`qrtiger.com`**, and **`media.qrtiger.com`** are always allowed for that flow.
