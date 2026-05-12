@@ -20,6 +20,22 @@ function humanBlockchainSiteBase() {
     return String(process.env.HUMANBLOCKCHAIN_SITE_URL || '').replace(/\/+$/, '');
 }
 
+/** Login / account URL shown on verification errors (HB vs SmallStreet). */
+function qrVerificationAccountHintUrl() {
+    if (useHumanBlockchainMembership() && humanBlockchainSiteBase()) {
+        return `${humanBlockchainSiteBase()}/my-account/`;
+    }
+    return 'https://www.smallstreet.app/login/';
+}
+
+function looksLikeTransientMembershipError(msg) {
+    const s = String(msg || '');
+    return (
+        /HTTP error! status: (5\d\d|408|429)/i.test(s) ||
+        /ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket hang up|fetch failed|NetworkError/i.test(s)
+    );
+}
+
 function membershipQrEmailHostAllowed(hostname) {
     const h = String(hostname || '').replace(/^www\./i, '').toLowerCase();
     if (h === 'smallstreet.app') {
@@ -1073,11 +1089,21 @@ async function verifySmallStreetMembership(email) {
         }
 
         const response = await fetchWithRetry('https://www.smallstreet.app/wp-json/myapi/v1/api');
-        const data = await response.json();
-        
+        const rawSs = await response.text();
+        let data = [];
+        try {
+            data = rawSs ? JSON.parse(rawSs) : [];
+        } catch (e) {
+            console.error('SmallStreet membership API: non-JSON', rawSs.slice(0, 400));
+            throw new Error(`SmallStreet API returned invalid JSON (HTTP ${response.status})`);
+        }
+        if (!Array.isArray(data)) {
+            throw new Error('SmallStreet API: expected array of users');
+        }
+
         console.log(`🔍 API Response data:`, JSON.stringify(data, null, 2));
         console.log(`🔍 Total users in API: ${data.length}`);
-        
+
         for (const user of data) {
             console.log(`🔍 Checking user: ${user.user_email} (membership: ${user.membership_name})`);
             if (user.user_email.toLowerCase() === email.toLowerCase() && user.membership_id) {
@@ -1090,7 +1116,8 @@ async function verifySmallStreetMembership(email) {
         return [false, null];
     } catch (error) {
         console.error('Error verifying membership:', error);
-        throw new Error('Failed to verify membership after multiple retries');
+        const msg = error && error.message ? String(error.message) : 'Membership verification failed';
+        throw new Error(msg);
     }
 }
 
@@ -2618,7 +2645,9 @@ client.on('guildMemberAdd', async (member) => {
         // Send welcome message to new member
         const welcomeChannel = client.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
         if (welcomeChannel) {
-            await welcomeChannel.send(`🎉 Welcome <@${member.user.id}> to Gracebook!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **SmallStreet Account:** https://www.smallstreet.app/login/\n\n*Make Everyone Great Again* 🚀`);
+            await welcomeChannel.send(
+                `🎉 Welcome <@${member.user.id}> to Gracebook!\n\n🎯 **Next Steps:**\n• Upload your QR code in <#${process.env.VERIFY_CHANNEL_ID}> to verify membership and get your Discord roles\n• You'll receive XP rewards after verification\n\n🔗 **Your site account:** ${qrVerificationAccountHintUrl()}\n\n*Make Everyone Great Again* 🚀`
+            );
         }
         
         // Note: Database insertion happens during QR verification with real email, not on member join
@@ -4618,7 +4647,9 @@ client.on('messageCreate', async (message) => {
     // Process image
     const attachment = message.attachments.first();
     if (!attachment.name.match(/\.(png|jpg|jpeg)$/i)) {
-        await message.channel.send(`❌ Please send a valid image file (PNG, JPG, or JPEG).\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+        await message.channel.send(
+            `❌ Please send a valid image file (PNG, JPG, or JPEG).\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+        );
         return;
     }
 
@@ -4640,7 +4671,9 @@ client.on('messageCreate', async (message) => {
         try {
             const qrData = await readQRCode(attachment.url);
             if (!qrData) {
-                await processingMsg.edit(`❌ Could not read QR code.\nPlease ensure the image is clear and try again.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+                await processingMsg.edit(
+                    `❌ Could not read QR code.\nPlease ensure the image is clear and try again.\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+                );
                 return;
             }
 
@@ -4739,20 +4772,24 @@ client.on('messageCreate', async (message) => {
                 contactInfo = await fetchQR1BeData(qrPayload);
             } else {
                 await processingMsg.edit(
-                    `❌ **Unrecognized QR**\nThe image decoded, but the text was not a supported link.\n\n**Supported:**\n• SmallStreet vCard: \`…/wp-admin/admin-ajax.php?action=dong_public_vcard_card&token=…\`\n• \`https://www.smallstreet.app/...?email=you@example.com\` (or \`user_email=\`, \`mail=\`)\n• \`mailto:you@example.com\`\n• \`https://www.smallstreet.app/verify-me/?transaction_id=…\` (optional \`xp_units\`)\n• \`/wp-json/myapi/v1/verify-me?id=<Discord user id>&guild_id=<server id>\`\n• \`https://…qr1.be/…\` membership vCard\n\nCheck logs for \`📷 QR decoded\` to see the exact string.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`
+                    `❌ **Unrecognized QR**\nThe image decoded, but the text was not a supported link.\n\n**Supported:**\n• SmallStreet vCard: \`…/wp-admin/admin-ajax.php?action=dong_public_vcard_card&token=…\`\n• \`https://www.smallstreet.app/...?email=you@example.com\` (or \`user_email=\`, \`mail=\`)\n• \`mailto:you@example.com\`\n• \`https://www.smallstreet.app/verify-me/?transaction_id=…\` (optional \`xp_units\`)\n• \`/wp-json/myapi/v1/verify-me?id=<Discord user id>&guild_id=<server id>\`\n• \`https://…qr1.be/…\` membership vCard\n\nCheck logs for \`📷 QR decoded\` to see the exact string.\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
                 );
                 return;
             }
 
             if (!contactInfo || !contactInfo.email) {
-                await processingMsg.edit(`❌ Could not read contact information.\nPlease try again.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+                await processingMsg.edit(
+                    `❌ Could not read contact information.\nPlease try again.\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+                );
                 return;
             }
 
             await processingMsg.edit(`🔍 Verifying membership...`);
             const [isMember, membershipType] = await verifySmallStreetMembership(contactInfo.email);
             if (!isMember || !membershipType) {
-                await processingMsg.edit(`❌ User not verified!\nPlease register and purchase a membership at https://www.smallstreet.app/login/ first.\nMake Everyone Great Again\nadmin\nLog In - Make Everyone Great Again`);
+                await processingMsg.edit(
+                    `❌ User not verified!\nNo active membership found for \`${contactInfo.email}\`. Use the same email as your site account, then try again.\n🔗 ${qrVerificationAccountHintUrl()}\nMake Everyone Great Again`
+                );
                 return;
             }
 
@@ -4833,16 +4870,22 @@ client.on('messageCreate', async (message) => {
             console.error('QR Code Error:', error);
             console.error('QR Code Error Stack:', error.stack);
             const errorMessage = error.message || 'undefined';
-            await processingMsg.edit(`❌ An error occurred: ${errorMessage}\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+            await processingMsg.edit(
+                `❌ An error occurred: ${errorMessage}\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+            );
         }
     } catch (error) {
         console.error('Error during verification:', error);
         if (processingMsg) {
             const errorMessage = error.message || 'undefined';
-            if (error.message?.includes('multiple retries')) {
-                await processingMsg.edit(`❌ Service is temporarily unavailable.\nPlease try again in a few minutes.\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+            if (looksLikeTransientMembershipError(errorMessage)) {
+                await processingMsg.edit(
+                    `❌ Service is temporarily unavailable.\nPlease try again in a few minutes.\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+                );
             } else {
-                await processingMsg.edit(`❌ An error occurred: ${errorMessage}\nMake Everyone Great Again\nhttps://www.smallstreet.app/login/`);
+                await processingMsg.edit(
+                    `❌ An error occurred: ${errorMessage}\nMake Everyone Great Again\n${qrVerificationAccountHintUrl()}`
+                );
             }
         }
     } finally {
