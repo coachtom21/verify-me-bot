@@ -96,11 +96,13 @@ When both are set, the bot calls:
 - `GET /wp-json/hb/v1/discord-bot/membership?email=…`
 - `POST /wp-json/hb/v1/discord-bot/verification` (same JSON body as the legacy SmallStreet `discord-user` route)
 
-Optional: `HUMANBLOCKCHAIN_QR_EMAIL_HOSTS` — comma-separated extra hostnames allowed for `?email=` links on QR images (the hostname from `HUMANBLOCKCHAIN_SITE_URL` is included automatically).
+Optional: `HUMANBLOCKCHAIN_QR_EMAIL_HOSTS` — comma-separated extra hostnames for `?email=` on QR links. When HumanBlockchain mode is on, **`qr1.be`**, **`qrtiger.com`**, and **`media.qrtiger.com`** are always allowed for that flow.
 
-If these variables are **not** set, behaviour stays on **smallstreet.app** (unchanged).
+**WordPress:** set the same secret in **Settings** (option `hb_discord_bot_api_key`) or `define('HB_DISCORD_BOT_API_KEY', '…');` in `wp-config.php`. It must match `HUMANBLOCKCHAIN_API_KEY` on the bot.
 
-## Environment Variables
+**Troubleshooting:** If verification always fails, confirm the bot can reach `HUMANBLOCKCHAIN_SITE_URL` (no localhost from cloud hosts unless tunneled), the Bearer key matches WordPress, and the email scraped from the vCard matches the WordPress user’s account email.
+
+If `HUMANBLOCKCHAIN_SITE_URL` / `HUMANBLOCKCHAIN_API_KEY` are **not** set, behaviour stays on **smallstreet.app** (unchanged).
 
 - `DISCORD_TOKEN`: Your Discord bot token
 - `VERIFY_CHANNEL_ID`: ID of the channel where verification happens
