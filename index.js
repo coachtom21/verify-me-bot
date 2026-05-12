@@ -25,6 +25,11 @@ function membershipQrEmailHostAllowed(hostname) {
     if (h === 'smallstreet.app') {
         return true;
     }
+    if (useHumanBlockchainMembership()) {
+        if (h === 'qr1.be' || h === 'qrtiger.com' || h === 'media.qrtiger.com') {
+            return true;
+        }
+    }
     const extra = String(process.env.HUMANBLOCKCHAIN_QR_EMAIL_HOSTS || '')
         .split(',')
         .map((s) => String(s).trim().replace(/^www\./i, '').toLowerCase())
@@ -837,9 +842,34 @@ async function fetchQR1BeData(url) {
         const phoneMatch = html.match(/(?:tel:|Phone:|phone:)[^\d]*(\d[\d\s-]{8,})/);
         if (phoneMatch) info.phone = phoneMatch[1].replace(/\D/g, '');
 
-        // Extract email (first match in HTML — works for qr1.be and typical vCard markup)
-        const emailMatch = html.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-        if (emailMatch) info.email = emailMatch[1].trim();
+        // Extract email — prefer mailto / JSON "email" keys, then first plausible address.
+        let email = null;
+        const mailto = html.match(/mailto:([^"'<>\s?]+@[^"'<>\s&]+)/i);
+        if (mailto) {
+            try {
+                email = decodeURIComponent(mailto[1].trim());
+            } catch {
+                email = mailto[1].trim();
+            }
+        }
+        if (!email) {
+            const jsonEmail = html.match(/["']email["']\s*:\s*["']([^"']+@[^"']+)["']/i);
+            if (jsonEmail) {
+                email = jsonEmail[1].trim();
+            }
+        }
+        if (!email) {
+            const emailMatch = html.match(/([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+                email = emailMatch[1].trim();
+            }
+        }
+        if (email && /example\.(com|org)$/i.test(email)) {
+            email = null;
+        }
+        if (email) {
+            info.email = email;
+        }
 
         return info.email ? info : null;
     } catch (error) {
@@ -1016,10 +1046,23 @@ async function verifySmallStreetMembership(email) {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             });
-            const data = await response.json();
+            const rawText = await response.text();
+            let data = {};
+            try {
+                data = rawText ? JSON.parse(rawText) : {};
+            } catch (e) {
+                console.error('HumanBlockchain membership API: non-JSON body', rawText.slice(0, 400));
+                throw new Error(
+                    response.ok
+                        ? 'HumanBlockchain membership API returned invalid JSON'
+                        : `HumanBlockchain API HTTP ${response.status}: ${rawText.slice(0, 200)}`
+                );
+            }
             if (!response.ok) {
                 console.error('HumanBlockchain membership API error:', response.status, data);
-                throw new Error(data.message || data.code || 'HumanBlockchain membership API failed');
+                throw new Error(
+                    (data && (data.message || data.code)) || `HumanBlockchain membership API failed (${response.status})`
+                );
             }
             if (data.member && data.membership_name) {
                 console.log(`✅ HB API: member=${data.membership_name}`);
